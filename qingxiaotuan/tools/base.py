@@ -57,6 +57,7 @@ class ToolContext:
     on_progress: Optional[Callable[[str, str], None]] = None  # 进度心跳回调 (tool_name, message)
     permissions: Optional[PermissionPolicy] = None
     safety_advice: Optional[str] = None                      # 执行前安全护栏给出的风险提示 (供确认环节展示)
+    ui: Optional[Any] = None                                 # 可选 UI 句柄 (用于吉祥物状态切换等)
 
     def config(self, dotted: str, default: Any = None) -> Any:
         cfg = self.kernel.get("config")
@@ -158,6 +159,11 @@ class ToolRegistry:
                 allowed = ctx.confirm(prompt) if ctx.confirm else False
                 if not allowed:
                     self._emit_exec(ctx, name, "denied")
+                    if ctx.ui is not None:
+                        try:
+                            ctx.ui.mascot_set("alert")
+                        except Exception:
+                            pass
                     reason = "用户未批准该操作。"
                     if getattr(ctx, "safety_advice", None):
                         reason += f" {ctx.safety_advice}"

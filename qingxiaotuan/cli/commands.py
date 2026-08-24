@@ -159,6 +159,9 @@ def _auto_memory_on_exit(agent, config: Config) -> None:
 
 def _run_turn(agent, user_input: str, config: Config, stream: bool | None = None) -> None:
     stream = config.get("model.stream", True) if stream is None else stream
+    # 把 UI 句柄注入工具上下文, 让安全拦截时能切换吉祥物状态
+    if getattr(agent, "ctx", None) is not None:
+        agent.ctx.ui = ui
     ui.think_start()
     first = {"t": True}
 
@@ -176,6 +179,8 @@ def _run_turn(agent, user_input: str, config: Config, stream: bool | None = None
         on_tool_result=lambda n, res: ui.tool_result(n, res),
         on_error=lambda msg: ui.error(msg),
     )
+    # 任务结束: 吉祥物进入完成态
+    ui.mascot_set("done")
     if not stream:
         ui.answer_md(answer or "(无输出)")
     else:

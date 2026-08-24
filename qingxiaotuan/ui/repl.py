@@ -76,6 +76,12 @@ class UI:
         self._session: Optional["PromptSession"] = None
         self._pt_disabled = not _HAS_PT
         self._reasoning_open = False
+        # 吉祥物: 在 CLI 生命周期内维持状态, 由任务事件驱动切换
+        from .mascot import Mascot, IDLE
+        self._mascot = Mascot(IDLE)
+        # 会话 token 统计 (由 stream/tool 调用时累加, /usage 可读)
+        self._tokens = 0
+        self._ctx_pct: Optional[float] = None
 
     # ------------------------------------------------------------ 输入
 
@@ -123,40 +129,77 @@ class UI:
 
     def banner(self, config, workspace: str, model: str, profile: str, mode: str = "standard",
                effort: str = "high") -> None:
-        """青小团启动 banner (Kimi Code CLI 风格: 简洁信息盒, 无吉祥物)。"""
+        """青小团启动 banner: 左侧吉祥物 + 右侧信息盒 (Kimi Code CLI 风格)。"""
+        from .mascot import Mascot, IDLE
+
         yolo = (mode == "yolo")
         mode_badge = "yolo · 自动批准" if yolo else "standard · 需确认"
         title = f"青小团 CLI"
         sub = f"v{__version__}"
         box, primary, accent, dim, muted = C["box"], C["primary"], C["accent"], C["dim"], C["muted"]
-        inner_w = 60
+        inner_w = 56
         bar = "─" * inner_w
+
+        m = Mascot(IDLE)
+        art = m.ascii(0).split("\n")  # 3 行小图
+        pad = max(len(a) for a in art)
+        art = [a.ljust(pad) for a in art]
 
         self.console.print(f"[{box}]╭─[{box}]{bar}[{box}]╮[/{box}]")
         self.console.print(
-            f"[{box}]│[/{box}]  [{primary}]{title}[/{primary}] [{dim}]{sub}[/{dim}]"
+            f"[{box}]│[/{box}] {art[0]}  [{primary}]{title}[/{primary}] [{dim}]{sub}[/{dim}]"
             f"   [{accent}]{model}[/{accent}]  [{muted}]{mode_badge}[/{muted}]"
         )
         self.console.print(
-            f"[{box}]│[/{box}]  [{dim}]输入任务开始对话 · /help 查看命令 · /loop 进入自主开发[/{dim}]"
+            f"[{box}]│[/{box}] {art[1]}  [{dim}]输入任务开始对话 · /help 查看命令 · /loop 进入自主开发[/{dim}]"
         )
+        self.console.print(f"[{box}]│[/{box}] {art[2]}")
         self.console.print(f"[{box}]╰─[{box}]{bar}[{box}]╯[/{box}]")
         self.status_bar(mode, effort, workspace)
         self.console.print()
 
     def status_bar(self, mode: str = "standard", effort: str = "high", workspace: str = "") -> None:
-        """底部 footer 状态栏 (Kimi 风格): 模式 · effort · 工作区。"""
+        """底部 footer 状态栏: 吉祥物状态 · 模式 · effort · token · 上下文 · 工作区。"""
         yolo = (mode == "yolo")
         mode_txt = "yolo" if yolo else "standard"
         mode_c = C["warn"] if yolo else C["muted"]
-        self.console.print(
-            f"[{C['muted']}]─ {mode_txt} · effort={effort} · {workspace}[/{C['muted']}]"
-        )
+        # 吉祥物状态图标 (单字表情, 随任务推进变化)
+        icon = {"idle": "◦", "thinking": "◍", "working": "●", "alert": "⚠", "done": "✓"}.get(
+            self._mascot.state, "◦")
+        icon_c = {"idle": C["dim"], "thinking": C["primary"], "working": C["ok"],
+                  "alert": C["warn"], "done": C["accent"]}.get(self._mascot.state, C["dim"])
+        # token 用量 (累计), 上下文占用百分比
+        tok = f"tok={self._tokens}" if self._tokens else ""
+        ctx = f"ctx={self._ctx_pct:.0f}%" if self._ctx_pct is not None else ""
+        parts = [f"[{icon_c}]{icon}[/{icon_c}]", f"[{mode_c}]{mode_txt}[/{mode_c}]",
+                 f"effort={effort}"]
+        if tok:
+            parts.append(tok)
+        if ctx:
+            parts.append(ctx)
+        parts.append(workspace)
+        self.console.print(f"[{C['muted']}]─ {' · '.join(parts)}[/{C['muted']}]")
+
+    # ------------------------------------------------------------ 吉祥物驱动
+    def mascot_set(self, state: str) -> None:
+        """手动切换吉祥物状态 (供命令层/事件钩子调用)。"""
+        self._mascot.set(state)
+
+    def mascot_tick(self) -> None:
+        """推进吉祥物动画帧 (在 spinner / 长任务期间周期调用)。"""
+        self._mascot.tick()
+
+    def add_tokens(self, n: int) -> None:
+        self._tokens += n
+
+    def set_context_pct(self, pct: float) -> None:
+        self._ctx_pct = max(0.0, min(100.0, pct))
 
     def phase(self, text: str) -> None:
         self.console.print(f"[{C['primary']}]▶ {text}[/{C['primary']}]")
 
     def think_start(self) -> None:
+        self._mascot.set("thinking")
         self.console.print(f"[{C['dim']}]⠋ 思考中…[/]", end="", highlight=False)
 
     def stream(self, tok: str) -> None:
@@ -176,6 +219,7 @@ class UI:
 
     def tool_call(self, name: str, args: str) -> None:
         self._close_reasoning()
+        self._mascot.set("working")
         self.console.print(f"  [{C['accent']}]▶[/{C['accent']}] [{C['primary']}]{name}[/{C['primary']}] [{C['dim']}]{args[:90]}[/{C['dim']}]", highlight=False)
 
     def tool_result(self, name: str, summary: str) -> None:
