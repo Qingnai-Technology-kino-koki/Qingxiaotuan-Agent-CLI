@@ -1,0 +1,31 @@
+[build-system]
+requires = ["setuptools>=68"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "qingxiaotuan"
+version = "0.1.0"
+description = "青小团 CLI - 融合 DeepSeek Harness 插件化理念与 Hermes Agent 自进化理念的独立 Agent CLI"
+readme = "README.md"
+requires-python = ">=3.11"
+license = { text = "MIT" }
+dependencies = [
+    "openai>=1.40",
+    "pyyaml>=6.0",
+    "rich>=13.0",
+    "prompt_toolkit>=3.0",
+    "httpx>=0.27",
+]
+
+[project.optional-dependencies]
+dev = ["pytest>=8.0"]
+
+[project.scripts]
+qxt = "qingxiaotuan.cli:main"
+
+[tool.setuptools.packages.find]
+include = ["qingxiaotuan*"]
+
+# 把内置技能模板与 SOUL.md 等资源文件打进 wheel (否则 pip install 后首次启动无技能)
+[tool.setuptools.package-data]
+qingxiaotuan = ["resources/**/*.md"]

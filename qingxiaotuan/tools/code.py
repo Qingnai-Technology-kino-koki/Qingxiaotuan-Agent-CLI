@@ -1,0 +1,262 @@
+"""代码理解工具插件 —— 让 Agent 真正"懂"一个仓库, 而不仅是逐文件读。
+
+能力:
+- codebase_map: 当前仓库的结构/规模/关键文件地图 (大上下文机制的入口)。
+- find_symbol: 跨文件定位符号定义 (函数/类/变量/导出)。
+- find_references: 追踪符号被谁引用 (跨文件依赖)。
+- run_tests: 自动探测测试框架并运行, 返回通过/失败结果 (自测闭环)。
+- git_status: 只读地感知当前改动 (安全, 不写)。
+"""
+
+from __future__ import annotations
+
+import os
+import re
+import subprocess
+from pathlib import Path
+from typing import List
+
+from ..context.indexer import CodebaseIndexer
+from ..core.kernel import Kernel, Plugin
+from .base import Tool, ToolContext, string_prop
+
+
+def _indexer(ctx: ToolContext):
+    """返回已构建的 IndexResult (含 map_text)。已构建结果会缓存在内核, 避免重复扫描。"""
+    cached = ctx.kernel.get("codebase_indexer")
+    if cached is not None:
+        return cached
+    ws = ctx.config("context.index_max_files", 300)
+    ml = ctx.config("context.index_max_loc", 200_000)
+    idx = CodebaseIndexer(ctx.workspace, max_files=ws, max_loc=ml)
+    res = idx.build()
+    # 缓存 IndexResult 到内核服务表, 后续 codebase_map 调用直接复用, 不再重复扫描大仓库
+    ctx.kernel._services["codebase_indexer"] = res
+    return res
+
+
+def codebase_map(ctx: ToolContext, max_tree_lines: int = 80) -> str:
+    res = _indexer(ctx)
+    extra = ""
+    if ctx.config("context.pin_codebase", True):
+        extra = "\n(系统提示里已包含同款地图, 此工具用于获取最新/更完整的视图)\n"
+    return res.map_text(max_tree_lines=max_tree_lines) + extra
+
+
+# 定义位置的常见模式
+_DEF_PATTERNS = [
+    r"^\s*(?:export\s+)?(?:async\s+)?def\s+{s}\s*\(",
+    r"^\s*(?:export\s+)?class\s+{s}\s*[\(:]",
+    r"^\s*(?:export\s+)?(?:const|let|var|function)\s+{s}\b",
+    r"^\s*(?:export\s+)?interface\s+{s}\b",
+    r"^\s*(?:pub(?:\([^)]*\))?\s+)?(?:fn|func)\s+{s}\s*\(",
+    r"^\s*(?:public|private|protected|internal)?\s*(?:static\s+)?(?:final\s+)?[\w<>\[\],\s]+\s+{s}\s*\(",
+    r"^\s*{s}\s*[:=]\s",                          # 变量赋值 (python/go/ts)
+    r"^\s*(?:func|function)\s+{s}\s*\(",
+]
+
+
+def find_symbol(ctx: ToolContext, symbol: str, path: str = ".") -> str:
+    root = _resolve(ctx, path)
+    if not root.exists():
+        return f"[错误] 路径不存在: {root}"
+    compiled = [re.compile(p.format(s=re.escape(symbol))) for p in _DEF_PATTERNS]
+    hits: List[str] = []
+    for current, dirs, files in os.walk(root):
+        dirs[:] = [d for d in dirs if d not in _SKIP]
+        for fname in files:
+            fpath = Path(current) / fname
+            try:
+                with open(fpath, "r", encoding="utf-8", errors="replace") as fh:
+                    for i, line in enumerate(fh, 1):
+                        if any(p.search(line) for p in compiled):
+                            rel = str(fpath.relative_to(root))
+                            hits.append(f"{rel}:{i}: {line.strip()[:160]}")
+                            if len(hits) >= 60:
+                                return "\n".join(hits) + "\n...[超过 60 处, 截断]"
+            except OSError:
+                continue
+    return "\n".join(hits) if hits else f"未找到符号 '{symbol}' 的定义"
+
+
+def find_references(ctx: ToolContext, symbol: str, path: str = ".") -> str:
+    root = _resolve(ctx, path)
+    if not root.exists():
+        return f"[错误] 路径不存在: {root}"
+    # 引用 = 出现该标识符且不是定义行的位置
+    compiled = [re.compile(p.format(s=re.escape(symbol))) for p in _DEF_PATTERNS]
+    hits: List[str] = []
+    for current, dirs, files in os.walk(root):
+        dirs[:] = [d for d in dirs if d not in _SKIP]
+        for fname in files:
+            fpath = Path(current) / fname
+            try:
+                with open(fpath, "r", encoding="utf-8", errors="replace") as fh:
+                    for i, line in enumerate(fh, 1):
+                        if symbol in line and not any(p.search(line) for p in compiled):
+                            rel = str(fpath.relative_to(root))
+                            hits.append(f"{rel}:{i}: {line.strip()[:160]}")
+                            if len(hits) >= 80:
+                                return "\n".join(hits) + "\n...[超过 80 处, 截断]"
+            except OSError:
+                continue
+    return "\n".join(hits) if hits else f"未找到 '{symbol}' 的引用"
+
+
+def run_tests(ctx: ToolContext, command: str = "") -> str:
+    """自动探测并运行测试。给定 command 时直接执行, 否则按语言探测。"""
+    root = Path(ctx.workspace)
+    if command:
+        return _run(ctx, command)
+    # 探测测试框架 (合并当前目录与子目录的测试文件, 避免 or 短路漏报)
+    test_py = (
+        list(root.glob("test_*.py"))
+        + list(root.glob("*_test.py"))
+        + list(root.rglob("test_*.py"))
+        + list(root.rglob("*_test.py"))
+    )
+    if (root / "package.json").exists():
+        pkg = (root / "package.json").read_text(encoding="utf-8", errors="replace")
+        if '"test"' in pkg or '"vitest"' in pkg or '"jest"' in pkg:
+            return _run(ctx, "npm test")
+    if (root / "pyproject.toml").exists() or (root / "pytest.ini").exists() \
+            or (root / "tests").is_dir() or (root / "test").is_dir() or test_py:
+        return _run(ctx, "python -m pytest -q")
+    if (root / "go.mod").exists():
+        return _run(ctx, "go test ./...")
+    if (root / "Cargo.toml").exists():
+        return _run(ctx, "cargo test")
+    if list(root.glob("*.csproj")) or list(root.glob("*.sln")):
+        return _run(ctx, "dotnet test")
+    return "[提示] 未探测到测试框架。可显式传入 command, 例如 run_tests command=\"pytest tests/\"。"
+
+
+def git_status(ctx: ToolContext) -> str:
+    return _run(ctx, "git status --short", timeout=15) + "\n" + _run(ctx, "git diff --stat", timeout=15)
+
+
+# 破坏性命令红名单: 即便 YOLO 模式自动批准, 这些也绝不经由只读/自测工具执行,
+# 必须由用户显式走确认路径 (shell 工具/危险工具) 才能跑, 防误炸工作区或远端。
+_DANGEROUS_PATTERNS = (
+    r"\brm\s+(-[a-zA-Z]*r[a-zA-Z]*f|-[a-zA-Z]*f[a-zA-Z]*r)\b",  # rm -rf / rm -fr
+    r"\brm\s+-[a-zA-Z]*\s+/",                                    # rm -r /
+    r"\bmkfs\b",
+    r"\bdd\b\s+if=",
+    r"git\s+push\s+(--force|-f)\b",
+    r"git\s+reset\s+--hard\b",
+    r"git\s+clean\s+-[a-zA-Z]*[fd]",
+    r":\(\)\s*\{\s*:\|:&\s*\}",                                  # fork 炸弹
+    r">\s*/dev/sd[a-z]",
+)
+
+
+def _looks_dangerous(command: str) -> bool:
+    import re as _re
+    c = command.strip()
+    if c.startswith("sudo ") or c.startswith("su "):
+        return True
+    return any(p.search(c) for p in (re.compile(p) for p in _DANGEROUS_PATTERNS))
+
+
+def _run(ctx: ToolContext, command: str, timeout: int = 120) -> str:
+    # 只读/自测工具里夹带破坏性命令: 直接拒绝, 不进 shell。
+    if _looks_dangerous(command):
+        return (
+            f"[拒绝] 命令含破坏性操作, 不允许在 run_tests/git_status 内执行: {command}\n"
+            "如需执行, 请走显式确认路径 (shell 危险工具)。"
+        )
+    limit = timeout or ctx.config("tools.shell.timeout", 60)
+    try:
+        proc = subprocess.run(
+            command, shell=True, cwd=ctx.workspace, capture_output=True,
+            text=True, timeout=limit, errors="replace",
+        )
+    except subprocess.TimeoutExpired:
+        return f"[超时] 命令在 {limit}s 内未完成: {command}"
+    out = (proc.stdout or "") + (proc.stderr or "")
+    if len(out) > 6000:
+        out = out[:6000] + "\n...[截断]"
+    return f"$ {command}\nexit={proc.returncode}\n{out.strip()}"
+
+
+def _resolve(ctx: ToolContext, path: str) -> Path:
+    workspace = Path(ctx.workspace).resolve()
+    candidate = Path(path)
+    if not candidate.is_absolute():
+        candidate = workspace / candidate
+    resolved = candidate.resolve()
+    try:
+        resolved.relative_to(workspace)
+    except ValueError as exc:
+        raise ValueError(f"路径必须位于工作区内: {path}") from exc
+    return resolved
+
+
+_SKIP = {
+    ".git", ".venv", "venv", "node_modules", "__pycache__", ".tox",
+    ".mypy_cache", ".pytest_cache", "dist", "build", "target", "out",
+}
+
+
+class CodeToolPlugin(Plugin):
+    name = "tools.code"
+    requires = ["tool_registry"]
+
+    def activate(self, kernel: Kernel) -> None:
+        registry = kernel.require("tool_registry")
+        registry.register(Tool(
+            name="codebase_map",
+            description="代码库结构树/规模/关键入口, 理解全貌",
+            parameters={
+                "type": "object",
+                "properties": {
+                    "max_tree_lines": {"type": "integer", "description": "目录树行数, 默认 80"},
+                },
+                "required": [],
+            },
+            handler=codebase_map, group="code",
+        ))
+        registry.register(Tool(
+            name="find_symbol",
+            description="跨文件定位符号定义, 返回 file:line",
+            parameters={
+                "type": "object",
+                "properties": {
+                    "symbol": string_prop("符号名 (不含参数)"),
+                    "path": string_prop("根目录, 默认工作区"),
+                },
+                "required": ["symbol"],
+            },
+            handler=find_symbol, group="code",
+        ))
+        registry.register(Tool(
+            name="find_references",
+            description="追踪符号被哪些地方引用, 分析依赖",
+            parameters={
+                "type": "object",
+                "properties": {
+                    "symbol": string_prop("符号名"),
+                    "path": string_prop("根目录, 默认工作区"),
+                },
+                "required": ["symbol"],
+            },
+            handler=find_references, group="code",
+        ))
+        registry.register(Tool(
+            name="run_tests",
+            description="探测并运行测试 (pytest/npm/git/cargo/dotnet)",
+            parameters={
+                "type": "object",
+                "properties": {
+                    "command": string_prop("显式命令, 留空自动探测"),
+                },
+                "required": [],
+            },
+            handler=run_tests, group="code",
+        ))
+        registry.register(Tool(
+            name="git_status",
+            description="只读查看 git 改动 (status+diff)",
+            parameters={"type": "object", "properties": {}, "required": []},
+            handler=git_status, group="code",
+        ))

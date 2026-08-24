@@ -1,0 +1,6 @@
+{
+  "name": "hello",
+  "version": "1.0.0",
+  "description": "测试插件: 打招呼",
+  "methods": ["greet", "add"]
+}

@@ -1,0 +1,37 @@
+{
+  "name": "qingxiaotuan-agent",
+  "version": "0.1.0",
+  "description": "青小团 (Qingxiaotuan) — 一个以\"最小影响半径\"为核心设计理念的 Agent CLI：Shell 执行前安全拦截、自我改进闭环、C/TS 外部能力引擎。",
+  "license": "MIT",
+  "homepage": "https://github.com/Qingnai-Tech/Qingxiaotuan-Agent",
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/Qingnai-Tech/Qingxiaotuan-Agent.git"
+  },
+  "bugs": {
+    "url": "https://github.com/Qingnai-Tech/Qingxiaotuan-Agent/issues"
+  },
+  "keywords": [
+    "agent",
+    "cli",
+    "ai",
+    "llm",
+    "coding-agent",
+    "safety",
+    "self-improving",
+    "developer-tools"
+  ],
+  "engines": {
+    "node": ">=18"
+  },
+  "scripts": {
+    "build": "npm run build:ts && npm run build:c",
+    "build:ts": "cd ext/ts && npm install && npm run build",
+    "build:c": "bash scripts/build-c.sh",
+    "test:ts": "cd ext/ts && npm test",
+    "selftest": "python -m qingxiaotuan.cli.main ext selftest"
+  },
+  "workspaces": [
+    "ext/ts"
+  ]
+}

@@ -1,0 +1,24 @@
+.venv/
+__pycache__/
+*.egg-info/
+.demo-home/
+.demo-patch.yaml
+.pytest_cache/
+.pytest_tmp/
+.scratch/
+.vscode/
+ext/ts/node_modules/
+ext/ts/dist/
+ext/c/dist/
+ext/dist/
+build/
+dist_wheel/
+# 密钥与环境 (绝不入库)
+.env
+.env.*
+!.env.example
+
+# 名称.md 为内部草稿, 不发布
+名称.md
+
+ext/dist/**
