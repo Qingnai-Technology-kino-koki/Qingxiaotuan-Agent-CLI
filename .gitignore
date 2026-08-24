@@ -22,3 +22,6 @@ dist_wheel/
 名称.md
 
 ext/dist/**
+
+# 依赖 (workspaces 符号链接也会指向这里)
+node_modules/
