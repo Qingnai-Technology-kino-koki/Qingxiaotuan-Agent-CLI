@@ -64,6 +64,7 @@ _HELP = """\n可用斜杠命令 (Slash Commands)
   /route     智能模型路由 (根据任务难度选择模型)
   /cost      查看成本报告
   /clear     清空对话上下文
+  /more      展开上一条被折叠的长输出
   /exit      退出
 
 提示: Enter 发送 · Esc+Enter 换行 · 多行可用三引号"""
@@ -82,6 +83,8 @@ class UI:
         # 会话 token 统计 (由 stream/tool 调用时累加, /usage 可读)
         self._tokens = 0
         self._ctx_pct: Optional[float] = None
+        # 长输出折叠: 最近一次被折叠的内容, 供 /more 展开
+        self._last_collapsed: Optional[str] = None
 
     # ------------------------------------------------------------ 输入
 
@@ -101,12 +104,19 @@ class UI:
             def _(event):  # Esc+Enter = 换行, 支持多行输入
                 event.current_buffer.insert_text("\n")
 
+            @kb.add("c-g")  # Ctrl+G = 快捷键 / 命令面板 (纯键盘)
+            def _(event):
+                chosen = self.keymap_panel()
+                if chosen:
+                    event.current_buffer.text = chosen
+                    event.current_buffer.validate_and_handle()
+
             return PromptSession(
                 history=FileHistory(str(hist)),
                 key_bindings=kb,
                 multiline=True,
                 prompt_continuation="  ",
-                bottom_toolbar="[dim]Enter 发送 · Esc+Enter 换行 · /help[/]",
+                bottom_toolbar="[dim]Enter 发送 · Esc+Enter 换行 · Ctrl+G 命令面板 · /help[/]",
                 enable_history_search=True,
             )
         except Exception:  # 非真实控制台等环境: 降级为 input()
@@ -125,6 +135,119 @@ class UI:
         text = self._session.prompt(prefix)
         return text.strip()
 
+    # ------------------------------------------------------------ 快捷键面板
+
+    # 键位说明 (纯键盘流), 展示在 Ctrl+G 面板顶部
+    _KEY_GROUPS = (
+        ("输入", (
+            ("Enter", "发送当前输入"),
+            ("Esc + Enter", "插入换行 (多行输入)"),
+            ("↑ / ↓", "浏览历史 (开启历史搜索)"),
+            ("Ctrl + C", "中断 / 取消当前输入"),
+            ("Ctrl + L", "清屏"),
+            ("Ctrl + G", "打开本命令面板"),
+        )),
+        ("常用斜杠命令", (
+            ("/help", "显示帮助"),
+            ("/model", "切换/查看模型"),
+            ("/effort", "切换推理投入 low/medium/high"),
+            ("/usage", "本次会话 token 用量"),
+            ("/context", "上下文占用"),
+            ("/more", "展开上一条折叠的长输出"),
+            ("/loop", "进入自主开发循环"),
+            ("/review", "自动代码评审"),
+            ("/clear", "清空对话上下文"),
+            ("/exit", "退出"),
+        )),
+    )
+
+    def keymap_panel(self) -> Optional[str]:
+        """纯键盘快捷键 / 命令面板。
+
+        用 RadioList 渲染可方向键导航的列表, 选中回车后把对应斜杠命令
+        回填到输入框并执行 (或返回 None 表示取消)。
+        """
+        try:
+            from prompt_toolkit.widgets import RadioList
+            from prompt_toolkit import Application
+            from prompt_toolkit.layout.containers import HSplit, Window
+            from prompt_toolkit.layout.controls import FormattedTextControl
+            from prompt_toolkit.layout.dimension import D
+            from prompt_toolkit.key_binding import KeyBindings
+            from prompt_toolkit.filters import Condition
+        except Exception:
+            # prompt_toolkit 组件缺失: 退化为打印帮助
+            self._print_keymap_fallback()
+            return None
+
+        try:
+            return self._build_keymap_app(RadioList, Application, HSplit, Window,
+                                          FormattedTextControl, D, KeyBindings, Condition)
+        except Exception:
+            # 无 TTY / 无法创建应用 (如 CI 环境): 降级为打印键位表
+            self._print_keymap_fallback()
+            return None
+
+    def _build_keymap_app(self, RadioList, Application, HSplit, Window,
+                          FormattedTextControl, D, KeyBindings, Condition) -> Optional[str]:
+
+        # 构建可选项: (回填文本, 展示标签)
+        options = []
+        for grp_name, items in self._KEY_GROUPS:
+            for key, desc in items:
+                # 斜杠命令回填 /xxx, 普通键位不回填
+                fill = key if key.startswith("/") else ""
+                label = f"{key:<12} {desc}"
+                options.append((fill, label))
+        # 去重 (保留首个)
+        seen = set()
+        uniq = []
+        for fill, label in options:
+            if label in seen:
+                continue
+            seen.add(label)
+            uniq.append((fill, label))
+
+        radio = RadioList(values=uniq)
+        title_text = (
+            "青小团 · 快捷键 / 命令面板   (↑↓ 选择 · Enter 执行斜杠命令 · Esc 取消)"
+        )
+
+        @Condition
+        def is_radiolist_selected():
+            return True
+
+        kb = KeyBindings()
+
+        @kb.add("escape")
+        def _(event):  # Esc 取消
+            event.app.exit(result=None)
+
+        @kb.add("enter")
+        def _(event):  # Enter: 若选中项是斜杠命令则回填执行, 否则仅关闭
+            fill = radio.current_value
+            event.app.exit(result=fill if fill else None)
+
+        layout = HSplit([
+            Window(FormattedTextControl(title_text, focusable=False), height=D(min=1, max=1)),
+            radio,
+        ])
+        app = Application(layout=layout, key_bindings=kb, full_screen=False,
+                          mouse_support=False)
+        try:
+            return app.run()
+        except Exception:
+            self._print_keymap_fallback()
+            return None
+
+    def _print_keymap_fallback(self) -> None:
+        """prompt_toolkit 组件不可用时的降级: 直接打印键位表。"""
+        self._close_reasoning()
+        for grp_name, items in self._KEY_GROUPS:
+            self.console.print(f"[{C['primary']}]{grp_name}[/{C['primary']}]")
+            for key, desc in items:
+                self.console.print(f"  [{C['accent']}]{key:<12}[/{C['accent']}] [{C['dim']}]{desc}[/{C['dim']}]")
+
     # ------------------------------------------------------------ 输出
 
     def banner(self, config, workspace: str, model: str, profile: str, mode: str = "standard",
@@ -141,7 +264,7 @@ class UI:
         bar = "─" * inner_w
 
         m = Mascot(IDLE)
-        art = m.ascii(0).split("\n")  # 3 行小图
+        art = m.ascii(0, color=False).split("\n")  # 3 行小图；Rich 负责外层着色
         pad = max(len(a) for a in art)
         art = [a.ljust(pad) for a in art]
 
@@ -224,11 +347,48 @@ class UI:
 
     def tool_result(self, name: str, summary: str) -> None:
         self._close_reasoning()
-        flat = summary.replace("\n", " ").strip()
-        failed = any(k in flat for k in ("[错误]", "[已拒绝]", "Error", "error:", "Traceback", "exit=1", "失败"))
+        failed = any(k in summary for k in ("[错误]", "[已拒绝]", "Error", "error:", "Traceback", "exit=1", "失败"))
         icon = f"[{C['err']}]✗[/{C['err']}]" if failed else f"[{C['ok']}]✓[/{C['ok']}]"
+        # 长输出折叠: 超长结果只显示首尾 + 中段统计, 避免刷屏
+        if len(summary) > self._COLLAPSE_THRESHOLD and not failed:
+            self._print_collapsed(summary, icon, name)
+            return
+        flat = summary.replace("\n", " ").strip()
         s = flat[:160] + f" …({len(summary)}字符)" if len(flat) > 160 else flat
         self.console.print(f"    [{C['branch']}]└─[/{C['branch']}] {icon} [{C['dim']}]{s}[/{C['dim']}]", highlight=False)
+
+    _COLLAPSE_THRESHOLD = 600  # 超过该字符数即折叠中段
+
+    def _print_collapsed(self, text: str, icon: str, name: str = "") -> None:
+        """折叠式长输出: 头 8 行 + 中段统计 + 尾 4 行, 提示可用 /more <工具> 展开。"""
+        self._last_collapsed = text  # 供 /more 展开
+        lines = text.split("\n")
+        head_n, tail_n = 8, 4
+        if len(lines) <= head_n + tail_n + 2:
+            # 行数不多但字符多 (如单行巨长), 退化显示首尾各 240 字符
+            head = text[:240]
+            tail = text[-240:] if len(text) > 240 else ""
+            self.console.print(
+                f"    [{C['branch']}]└─[/{C['branch']}] {icon} [{C['dim']}]{head!r} … "
+                f"(共 {len(text)} 字符) … {tail!r}[/]")
+            return
+        head = "\n".join(lines[:head_n])
+        tail = "\n".join(lines[-tail_n:])
+        mid_lines = len(lines) - head_n - tail_n
+        mid_chars = sum(len(l) for l in lines[head_n:-tail_n])
+        self.console.print(f"    [{C['branch']}]└─[/{C['branch']}] {icon} [{C['dim']}]{head}[/]")
+        self.console.print(
+            f"    [{C['branch']}]│[/{C['branch']}] [{C['muted']}]… 中段已折叠: {mid_lines} 行 / "
+            f"{mid_chars} 字符 (输入 /more 展开全文) …[/{C['muted']}]")
+        self.console.print(f"    [{C['branch']}]└─[/{C['branch']}] [{C['dim']}]{tail}[/]")
+
+    def show_more(self) -> None:
+        """展开最近一次被折叠的长输出 (供 /more 调用)。"""
+        if not self._last_collapsed:
+            self.info("(没有可展开的内容)")
+            return
+        self.console.print(Markdown(f"```\n{self._last_collapsed}\n```"))
+        self._last_collapsed = None
 
     def answer_start(self) -> None:
         self._close_reasoning()
@@ -236,6 +396,10 @@ class UI:
 
     def answer_md(self, text: str) -> None:
         self._close_reasoning()
+        if text and len(text) > self._COLLAPSE_THRESHOLD * 4:
+            # 超长最终答复也折叠, 先给首尾预览, 中段可 /more 展开
+            self._print_collapsed(text, f"[{C['primary']}]★[/{C['primary']}]", "answer")
+            return
         self.console.print(Markdown(text or "(无输出)"))
 
     def report(self, title: str, body: str) -> None:

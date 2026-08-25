@@ -21,6 +21,9 @@
 
 from __future__ import annotations
 
+import math
+import time
+
 # 状态常量
 IDLE = "idle"
 THINKING = "thinking"
@@ -46,6 +49,7 @@ class Mascot:
     def __init__(self, state: str = IDLE) -> None:
         self.state = state if state in STATES else IDLE
         self._frame = 0
+        self._started_at = time.monotonic()
 
     # ---------------------------------------------------------- 状态控制
     def set(self, state: str) -> "Mascot":
@@ -60,7 +64,20 @@ class Mascot:
 
     @property
     def color(self) -> str:
-        return _PALETTE[self.state]["body"]
+        return self._flow_color(_PALETTE[self.state]["body"])
+
+    def _flow_color(self, state_color: str) -> str:
+        """在莫奈青与莫奈蓝之间缓慢呼吸，保留警告/完成状态的语义色。"""
+        if self.state in (ALERT, DONE):
+            return state_color
+        teal = (45, 212, 191)
+        blue = (59, 130, 246)
+        phase = (math.sin((time.monotonic() - self._started_at) * 0.9) + 1) / 2
+        # 状态色作为中间权重，让思考偏蓝、工作偏青。
+        state_rgb = self._hex(state_color)
+        weight = 0.25 + phase * 0.5
+        rgb = tuple(round((1 - weight) * state_rgb[i] + weight * (blue[i] if self.state == THINKING else teal[i])) for i in range(3))
+        return "#%02X%02X%02X" % rgb
 
     # ---------------------------------------------------------- ASCII 帧
     # 每个状态 4 帧, 用 ANSI 着色。富终端可见动画, 朴素终端退化为静态小图。
@@ -68,7 +85,7 @@ class Mascot:
     _FLOAT = [" ", "·", ":", "·"]  # 浮动相位
     _THINK_Q = ["?", "°", "¿", "°"]
 
-    def ascii(self, frame: int | None = None) -> str:
+    def ascii(self, frame: int | None = None, color: bool = True) -> str:
         """返回 ANSI 着色的单行使者小图 (约 3 行高, 用 \\n 分隔)。
 
         适合嵌在 banner 左侧或状态栏。frame 缺省用内部计数。
@@ -76,14 +93,21 @@ class Mascot:
         f = self._frame if frame is None else (frame % 4)
         st = self.state
         if st == IDLE:
-            return self._ascii_idle(f)
-        if st == THINKING:
-            return self._ascii_thinking(f)
-        if st == WORKING:
-            return self._ascii_working(f)
-        if st == ALERT:
-            return self._ascii_alert(f)
-        return self._ascii_done(f)
+            body = self._ascii_idle(f)
+        elif st == THINKING:
+            body = self._ascii_thinking(f)
+        elif st == WORKING:
+            body = self._ascii_working(f)
+        elif st == ALERT:
+            body = self._ascii_alert(f)
+        else:
+            body = self._ascii_done(f)
+        if color:
+            return body
+        # ASCII 图形内部的颜色包装只用于原始终端；Rich 渲染时去掉 ANSI，
+        # 否则转义序列会被当作普通 banner 文本显示。
+        import re
+        return re.sub(r"\033\[[0-9;]*m", "", body)
 
     def _wrap(self, body: str, color_hex: str) -> str:
         # 用 24bit ANSI 着色 (大多数现代终端支持)
@@ -96,7 +120,7 @@ class Mascot:
         return int(h[0:2], 16), int(h[2:4], 16), int(h[4:6], 16)
 
     def _ascii_idle(self, f: int) -> str:
-        c = _PALETTE[IDLE]["body"]
+        c = self.color
         breath = self._FLOAT[f]
         body = f"  {breath}( ◡ ){breath}\n" \
                f"  ╭─────╮\n" \
@@ -104,7 +128,7 @@ class Mascot:
         return self._wrap(body, c)
 
     def _ascii_thinking(self, f: int) -> str:
-        c = _PALETTE[THINKING]["body"]
+        c = self.color
         q = self._THINK_Q[f]
         spin = self._SPIN[(f * 2) % len(self._SPIN)]
         body = f"   {q} {spin}\n" \
@@ -114,7 +138,7 @@ class Mascot:
         return self._wrap(body, c)
 
     def _ascii_working(self, f: int) -> str:
-        c = _PALETTE[WORKING]["body"]
+        c = self.color
         lift = self._FLOAT[f]
         body = f"  ( • • )\n" \
                f" {lift}╭─────╮{lift}\n" \

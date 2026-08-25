@@ -89,7 +89,7 @@ def cmd_chat(args) -> int:
             events: list[str] = []
             answer = agent.run(
                 text, stream=False,
-                on_tool=lambda name, arguments: events.append(f"[工具] {name} {arguments[:120]}"),
+                on_tool=lambda name, arguments: (tui.set_mascot("working"), events.append(f"[工具] {name} {arguments[:120]}")),
                 on_tool_result=lambda name, result: events.append(f"[结果] {name}: {result[:240]}"),
                 on_error=lambda message: events.append(message),
             )
@@ -97,7 +97,14 @@ def cmd_chat(args) -> int:
                 tui.append_log(event)
             return answer or "(无输出)"
 
-        tui = FullScreenTUI(submit_in_tui)
+        def command_in_tui(text: str) -> Optional[str]:
+            if text.strip() in ("/exit", "/quit"):
+                tui.close()
+                return "正在退出…"
+            handled = _handle_slash(text, agent, config, workspace)
+            return "命令已执行" if handled else "正在退出…"
+
+        tui = FullScreenTUI(submit_in_tui, on_cancel=agent.cancel, on_command=command_in_tui)
         tui.append_log(f"模型: {config.get('model.provider')}/{config.get('model.model')}")
         tui.append_log(f"工作区: {workspace}")
         tui.run()
@@ -185,8 +192,15 @@ def _run_turn(agent, user_input: str, config: Config, stream: bool | None = None
         ui.answer_md(answer or "(无输出)")
     else:
         console.print()
+    # 把本次 token 用量与上下文占用回写状态栏, 让 tok= / ctx= 常驻可见
+    ui.add_tokens(agent.total_usage.get("prompt_tokens", 0) + agent.total_usage.get("completion_tokens", 0))
+    st = agent.context_stats()
+    if st.get("budget_tokens"):
+        ui.set_context_pct(st["estimated_tokens"] / st["budget_tokens"] * 100)
     if config.get("ui.show_token_usage", True):
         ui.usage(agent.total_usage)
+    # 回合结束重绘状态栏, 反映最新的 tok= / ctx= / 吉祥物状态
+    ui.status_bar(mode, effort, workspace)
     console.print()
 
 
@@ -560,6 +574,8 @@ def _handle_slash(cmd: str, agent, config: Config, workspace: str) -> bool:
     elif head == "/clear":
         agent.messages.clear()
         ui.info("上下文已清空。")
+    elif head == "/more":
+        ui.show_more()
     elif head == "/context":
         st = agent.context_stats()
         ui.context_bar(st)
@@ -697,8 +713,9 @@ def _apply_mode_override(kernel, mode: Optional[str], yes: bool = False) -> str:
     if effective is None:
         effective = kernel.require("config").mode
     elif effective != kernel.require("config").mode:
-        # 临时覆盖: 仅改内存视图, 不写用户默认 (避免污染下次启动)
-        kernel.require("config").set_user("mode.default", effective)
+        # 临时覆盖只改当前内存视图，不写用户配置，避免 `--yolo` 污染后续启动。
+        config = kernel.require("config")
+        config.data.setdefault("mode", {})["default"] = effective
     return effective
 
 

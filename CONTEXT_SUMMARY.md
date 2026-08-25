@@ -25,6 +25,12 @@
 - `core/prompts.py` / `core/agent.py`：短任务跳过语义召回，复杂任务限制首轮任务上下文长度，减少 Token 消耗。
 - `core/devloop.py` / `config/defaults.py`：新增 `loop.reflect_every`，默认每两轮反思，减少重复验证模型调用。
 - `models/anthropic.py`：兼容统一工厂传入的 `prompt_cache` 参数。
+- `ui/fullscreen.py`：新增真实吉祥物动画帧、工作状态跳动、任务互斥、Ctrl+C 协作式取消、slash 命令回调和正式 close 接口。
+- `core/agent.py`：新增 `cancel()` / `clear_cancel()`，在模型轮次边界安全停止当前任务。
+- `cli/commands.py`：全屏 TUI 接入 Agent 取消、工具活动和现有 slash 命令处理器。
+- `tests/test_fullscreen_tui.py`：覆盖吉祥物状态渲染和幂等关闭。
+- `ui/mascot.py`：加入莫奈青到莫奈蓝的时间渐变，待机/思考/工作状态会随时间缓慢流动。
+- `ui/fullscreen.py`：全屏 TUI 增加定时状态帧、工作跳动、任务互斥和 Ctrl+C 取消；修复 prompt_toolkit 焦点/快捷键兼容问题。
 - 修复 `ext/ts` CommonJS/Node16 配置冲突：统一 `module=Node16` 并移除源码 `.ts` 导入后缀，解决 TS5097/TS1343。
 - `core/ipc_client.py`：并发发送使用独立写锁，quiet 模式消费 stderr，支持按请求注册 stream 回调，关闭路径避免写入竞态。
 - 修复 `cli/commands.py` 中跨进程 `qxt bg wait` 仍调用空线程对象的问题。
@@ -62,6 +68,8 @@
 - 相关文件通过编辑器错误检查；完整 pytest 仍因终端无可靠回显/历史依赖环境问题未能确认。
 - TypeScript 相关文件通过编辑器错误检查；`npm run build` 未获得可靠终端回显，不能宣称构建通过。
 - 本轮 Python/TS/安装脚本相关文件均通过编辑器错误检查；Python `py_compile` 无错误输出，TS 构建无新的错误输出。
+- 本轮 TUI/Agent 修改通过编辑器错误检查；Python `py_compile` 通过；TS 构建退出码 0。
+- 吉祥物与全屏 TUI 窄测试首次结果为 `6 passed, 2 failed`（失败为 prompt_toolkit 焦点/快捷键）；修复后测试命令被当前 PowerShell 未闭合引号的 `>>` 续行状态拦截，未执行，不能宣称最终测试通过。
 - 随后 `npm run build` 仅输出 tsc 启动信息且无错误，`dist` 已有编译产物；仍未获得退出码统计。
 ## 已完成的既有改动
 

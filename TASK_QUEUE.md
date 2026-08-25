@@ -13,7 +13,8 @@
   - 目标：使用现有 prompt_toolkit/Rich 能力实现面板、日志区、输入区、状态栏和快捷键。
   - 验收：TTY 中可启动；输入、取消、查看工具活动和切换面板均可用；非 TTY 保持 headless 提示；退出无残留监听器。
   - 已完成：`qxt chat --tui`、全屏布局、状态栏、活动侧栏、滚动日志、多行输入、异步提交、Ctrl+Enter/Ctrl+L/Ctrl+Q。
-  - 待完成：Agent 取消快捷键、面板切换和真实 TTY 集成测试。
+  - 已补充：定时吉祥物动画帧、工作状态跳动、任务互斥、Ctrl+C 协作式取消、slash 命令回调、正式 close 接口和离线测试。
+  - 待完成：面板切换、真实 TTY 集成测试、实时 token/context 面板。
 - [~] M3: 统一模型能力矩阵
   - 目标：统一 OpenAI、Anthropic、Gemini、OpenAI-compatible、本地模型协议，声明工具、流式、视觉、JSON 能力。
   - 验收：离线协议测试覆盖请求转换、响应转换、错误和能力声明；运行时热切换不破坏 Agent 契约。

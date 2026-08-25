@@ -13,6 +13,7 @@ from __future__ import annotations
 
 import json
 import random
+import threading
 import time
 from typing import Any, Callable, Dict, List, Optional, Set
 
@@ -49,6 +50,7 @@ class Agent:
         self.messages: List[Dict[str, Any]] = []
         self.turn_count = 0
         self.total_usage = {"prompt_tokens": 0, "completion_tokens": 0}
+        self._cancel_event = threading.Event()
         self.exclude_tools: Set[str] = set(exclude_tools)
         self.yolo = config.is_yolo()
         self.plan_mode = False  # Plan Mode (对标 Claude Code: 只读模式, 不修改文件)
@@ -98,6 +100,14 @@ class Agent:
         )
 
     # ------------------------------------------------------------ 主循环
+
+    def cancel(self) -> None:
+        """请求在当前模型调用或工具步骤结束后停止当前任务。"""
+        self._cancel_event.set()
+
+    def clear_cancel(self) -> None:
+        """清除取消请求，准备执行下一项任务。"""
+        self._cancel_event.clear()
 
     def _chat_with_retry(self, messages, tools, stream, on_token, on_reason, label="模型"):
         """带超时/重试的模型调用: 失败按指数退避+抖动重试, 429 等限流按 Retry-After 退避。
@@ -202,6 +212,9 @@ class Agent:
 
         final_text = ""
         for step in range(max_iter):
+            if self._cancel_event.is_set():
+                final_text = "[任务已取消]"
+                break
             self._compress_if_needed()
 
             try:
