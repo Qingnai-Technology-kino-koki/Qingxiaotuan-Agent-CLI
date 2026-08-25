@@ -195,7 +195,7 @@ class FilesystemPlugin(Plugin):
                 },
                 "required": ["path"],
             },
-            handler=read_file, group="filesystem",
+            handler=read_file, group="filesystem", read_only=True,
         ))
         registry.register(Tool(
             name="write_file",
@@ -235,7 +235,7 @@ class FilesystemPlugin(Plugin):
                 },
                 "required": [],
             },
-            handler=list_dir, group="filesystem",
+            handler=list_dir, group="filesystem", read_only=True,
         ))
         registry.register(Tool(
             name="search_files",
@@ -248,7 +248,7 @@ class FilesystemPlugin(Plugin):
                 },
                 "required": ["pattern"],
             },
-            handler=search_files, group="filesystem",
+            handler=search_files, group="filesystem", read_only=True,
         ))
         registry.register(Tool(
             name="glob",
@@ -261,7 +261,7 @@ class FilesystemPlugin(Plugin):
                 },
                 "required": ["pattern"],
             },
-            handler=glob, group="filesystem",
+            handler=glob, group="filesystem", read_only=True,
         ))
         registry.register(Tool(
             name="move_file",

@@ -492,3 +492,17 @@ def cost_report(ctx: ToolContext) -> str:
     if tracker is None:
         return "暂无成本记录"
     return tracker.summary()
+
+
+def estimate_cost(
+    provider: str, model: str, prompt_tokens: int, completion_tokens: int
+) -> float:
+    """按内置定价表估算一次调用的成本 (USD)。未知模型用粗略默认价。"""
+    for preset in MODEL_PRESETS:
+        if preset.provider == provider and preset.model == model:
+            return round(
+                prompt_tokens / 1000 * preset.cost_per_1k_input
+                + completion_tokens / 1000 * preset.cost_per_1k_output,
+                6,
+            )
+    return round((prompt_tokens + completion_tokens) / 1000 * 0.001, 6)

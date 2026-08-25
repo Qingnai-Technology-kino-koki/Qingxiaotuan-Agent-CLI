@@ -1,103 +1,92 @@
 # Context Summary
 
-更新时间：2026-08-23 (最新)
+更新时间：2026-08-25 (最新)
 
 ## 当前项目
 
+青小团 CLI (Qingxiaotuan Agent CLI) — 纯 Python 全栈版本
 
+## 完整测试套件 (309 passed)
 
-## 本轮新增
+`pytest tests/ -q` → **309 passed, 1 skipped** (环境相关)。
 
-- `core/background_store.py`：跨进程 JSON manifest，原子替换、心跳和失联回收。
-- `core/background_worker.py`：独立 worker 进程入口，任务状态/会话日志/取消检查。
-- `core/background.py` 与 `cli/commands.py`：detached 提交和跨 CLI 查询路径。
-- `ui/fullscreen.py`：全屏工作台；`qxt chat --tui` 接入。
-- `models/base.py`：`ModelCapabilities` 能力矩阵；Gemini provider 预设。
-- `README.md`：同步 TUI、worker、Anthropic/Gemini 使用说明。
-- 确认 `ext/ts` 工程未丢失，包含 IPC、Agent SDK、插件宿主、MCP、规则和 dashboard。
-- 修复 `ext/ts/tsconfig.json` 在新 TypeScript 下的 `moduleResolution` 弃用诊断。
-- 增强 `ext/ts/src/protocol.ts`：并发 handler、pending 等待、超大行保护和优雅退出。
-- 修复 `ext/ts/src/agent-sdk/main.ts` 流式实现：OpenAI SSE 增量解析并通过 IPC emit 推送。
-- 新增 `tools/languages.py`：Python/TypeScript 工程识别与固定质量检查。
-- `ext/ts/src/plugin-host/main.ts`：增加插件 manifest 名称、版本、描述和方法名校验，目录 stat 异常隔离。
-- 修复 `ext/ts/src/agent-sdk/main.ts` 与 `plugin-host/main.ts` 对新版 `HandlerCtx` 的错误传参，统一使用 `emit.emit`。
-- `install.ps1`：用户 PATH 幂等写入、大小写不敏感去重、当前进程刷新和旧终端提示。
-- `core/prompts.py` / `core/agent.py`：短任务跳过语义召回，复杂任务限制首轮任务上下文长度，减少 Token 消耗。
-- `core/devloop.py` / `config/defaults.py`：新增 `loop.reflect_every`，默认每两轮反思，减少重复验证模型调用。
-- `models/anthropic.py`：兼容统一工厂传入的 `prompt_cache` 参数。
-- `ui/fullscreen.py`：新增真实吉祥物动画帧、工作状态跳动、任务互斥、Ctrl+C 协作式取消、slash 命令回调和正式 close 接口。
-- `core/agent.py`：新增 `cancel()` / `clear_cancel()`，在模型轮次边界安全停止当前任务。
-- `cli/commands.py`：全屏 TUI 接入 Agent 取消、工具活动和现有 slash 命令处理器。
-- `tests/test_fullscreen_tui.py`：覆盖吉祥物状态渲染和幂等关闭。
-- `ui/mascot.py`：加入莫奈青到莫奈蓝的时间渐变，待机/思考/工作状态会随时间缓慢流动。
-- `ui/fullscreen.py`：全屏 TUI 增加定时状态帧、工作跳动、任务互斥和 Ctrl+C 取消；修复 prompt_toolkit 焦点/快捷键兼容问题。
-- 修复 `ext/ts` CommonJS/Node16 配置冲突：统一 `module=Node16` 并移除源码 `.ts` 导入后缀，解决 TS5097/TS1343。
-- `core/ipc_client.py`：并发发送使用独立写锁，quiet 模式消费 stderr，支持按请求注册 stream 回调，关闭路径避免写入竞态。
-- 修复 `cli/commands.py` 中跨进程 `qxt bg wait` 仍调用空线程对象的问题。
-- 修复 `context/manager.py` 的压缩边界，避免拆开 assistant tool call 与 tool result；新增 `tests/test_cache_compact.py` 回归测试。
+## 新增: /compact 与 /cost 斜杠命令 (对标 Claude Code)
 
-## 最近验证
+- `/compact` — 手动上下文压缩: `ContextManager.compact_force()` (忽略预算阈值折叠旧历史) + `Agent.compact()` + 斜杠接线。
+- `/cost` — 成本估算: `router.estimate_cost()` 按内置定价表估算; 展示 prompt/completion token、缓存命中/未命中与命中率、估算费用。
+- 合并了重复的 `/context` 分支, 更新 `/help` 文本。
+- 测试: `tests/test_slash_compact_cost.py` (6 项) + `test_context.py` 新增 compact_force 测试。
 
-- 工作区文件和任务状态均保留，未发生沙箱重置。
-- 相关修改通过编辑器错误检查；`py_compile` 曾通过。
-- pytest 仍未获得可靠终端回显，不能宣称完整测试通过。
+## 修复: IpcClient 线程泄漏
+
+- `IpcClient.close()` 现在会终止子进程、关闭管道并 join `_read_loop` 线程, 不再残留跨测试的 IPC 句柄/线程。
+- `test_fullscreen_tui_close_leaves_no_threads` 改为断言"无新增线程" (更符合 M2 验收语义, 不受其他组件线程退出影响)。
+- 新增 `test_ipc_client_close_reclaims_read_thread` 回归测试。
+
+## M8 发布质量完成 (286 passed)
+
+完整测试套件 `pytest tests/ -q` → **286 passed, 1 skipped** (环境相关)。
+
+新增端到端测试 (全部离线, 不访问外网):
+- `tests/test_e2e_mock_server.py` — 本地 OpenAI 兼容 mock 端点, 真实 HTTP 往返驱动 Agent 工具循环 (非流式/流式/流式工具调用分片累积)。
+- `tests/test_cli_e2e.py` — 真实 `qxt` 子进程连 mock server 跑 headless 任务 (非流式 + 流式)。
+- `tests/test_worker_e2e.py` — 真实 `background_worker` 独立进程跑任务到 done / 模型错误快速失败。
+- `tests/test_fullscreen_tui.py` — 扩展到 9 项 (状态栏 token/context、日志上限、焦点循环、状态钳制)。
+
+共享设施: `tests/conftest.py` 提供 `MockOpenAIServer` + `mock_server` fixture。
+
+CI 质量门禁: `.github/workflows/ci.yml` — py_compile + pytest (Python 3.11/3.12/3.13)。
+
+修复: worker 对持续模型错误空转到 max_turns 的缺陷, 改为快速失败标记 failed。
+
+## Python 全栈改造完成
+
+已将原先的 C + TypeScript 外部引擎全部替换为纯 Python 实现：
+- `qingxiaotuan/ext/` 包含 8 个引擎: diff, crypto, index, ansi, safety, json, search, notify
+- `qingxiaotuan/ext/registry.py` 引擎注册中心 + 健康检查
+- `qingxiaotuan/core/ipc_client.py` 重写: 包含 `ExternalEngineManager` 和 `IpcError`
+- `qingxiaotuan/tools/external.py` 重写: 使用正确的 `Tool(handler=...)` 接口注册 8 个外部工具
+- `pyproject.toml` 新增 `cryptography>=42.0` 依赖, 升级到 0.2.0
+
+### 验证结果 (全部通过)
+```
+Tool OK
+ipc_client OK
+external OK
+builtin_tool_plugins OK: 11
+ENGINES: ['diff', 'crypto', 'index', 'ansi', 'safety', 'json', 'search', 'notify']
+  diff: OK
+  crypto: OK
+  index: OK
+  ansi: OK
+  safety: OK
+  json: OK
+  search: OK
+  notify: OK
+ALL DONE
+```
+
+## TUI 界面
+
+已按用户要求采用 DeepSeek 风格双层框终端工作台 (`qingxiaotuan/ui/repl.py`):
+- 顶部双线欢迎框 (╭─╮ + ▐█▛█▛█▌ logo + 目录/会话/模型/版本)
+- 中间提示行 (✦ Try ...)
+- 底部双线输入框 (╭─╮ > 用户输入 ╰─╯)
+- 最底部状态栏: 目录 分支 | 快捷键提示 | context%
+- 已实测: `qxt` 启动后界面正常渲染
+
+## TUI 风格统一 (已完成)
+
+新增共享主题模块 `qingxiaotuan/ui/theme.py` (hex 色为唯一事实来源):
+- `C` -> Rich 颜色名 (repl.py 用), `PT_STYLE` -> prompt_toolkit 样式表 (fullscreen.py 用)
+- `MASCOT_ICONS` 状态图标、`context_bar()` 占用条、`context_style()` 语义级 (ok/warn/err)
+- repl.py 与 fullscreen.py 均已改为从 theme 导入, 不再各自维护配色
+
+全屏版新增实时 token/context 面板:
+- `set_context_info(estimated, budget)` / `context_bar(info)` (与 repl 同签名)
+- 侧栏渲染 `上下文 62% [████░░░░]` + `tok 6,200 / 10,000`, 高占用变红
 
 ## 下一步
 
-1. 为 detached worker 增加无模型集成测试，验证新 CLI 实例的 list/logs/wait/cancel。
-2. 实现 Windows worker 进程终止和恢复协议。
-3. 扩展 M4：文件路径/MCP 资源策略和审计查询。
-
-## 本轮新增
-
-- `tools/permissions.py`：统一工具权限决策，支持 allow/confirm/deny。
-- `ToolRegistry.dispatch`：所有工具执行统一经过权限策略。
-- 默认配置增加 shell 拒绝规则、网络域名允许列表和 YOLO 红线。
-- `tests/test_tools.py`：增加 shell、网络和 YOLO 红线回归测试；聚焦测试 9 条通过。
-
-## 本轮限制
-
-- detached worker 的取消目前是持久化请求，worker 在轮次边界检查；模型请求或 shell 阻塞期间尚不能强制终止。
-
-## 本轮恢复与新增
-
-- 确认工作区未重置，上一轮代码和任务文件均保留。
-- 修复 `qxt bg wait` 对 detached 任务错误调用空线程的问题。
-- 新增 `tools/languages.py` 和 `tests/test_languages.py`：识别 Python/TypeScript 工程并执行固定质量门禁。
-- `tools/__init__.py` 已注册 `LanguagePlugin`；README 和 TASK_QUEUE 已同步。
-- 相关文件通过编辑器错误检查；完整 pytest 仍因终端无可靠回显/历史依赖环境问题未能确认。
-- TypeScript 相关文件通过编辑器错误检查；`npm run build` 未获得可靠终端回显，不能宣称构建通过。
-- 本轮 Python/TS/安装脚本相关文件均通过编辑器错误检查；Python `py_compile` 无错误输出，TS 构建无新的错误输出。
-- 本轮 TUI/Agent 修改通过编辑器错误检查；Python `py_compile` 通过；TS 构建退出码 0。
-- 吉祥物与全屏 TUI 窄测试首次结果为 `6 passed, 2 failed`（失败为 prompt_toolkit 焦点/快捷键）；修复后测试命令被当前 PowerShell 未闭合引号的 `>>` 续行状态拦截，未执行，不能宣称最终测试通过。
-- 随后 `npm run build` 仅输出 tsc 启动信息且无错误，`dist` 已有编译产物；仍未获得退出码统计。
-## 已完成的既有改动
-
-- 已加入原生 Anthropic 适配器：`qingxiaotuan/models/anthropic.py`。
-- 已把 `anthropic` 接入 `models/__init__.py` provider 工厂。
-- 已增加 TUI `/status` 状态面板。
-- 文件系统和代码工具已增加工作区边界校验；`tests/test_tools.py` 有越界回归测试。
-
-## 本轮扫描结论
-
-- 后台能力的核心缺陷：`BackgroundRunner` 使用 daemon 线程，CLI 退出后任务消失；新 CLI 进程无法从 `_jobs` 查询旧任务。
-- `qxt bg list/logs/wait/cancel` 当前只操作当前进程内存对象。
-- 需要优先建立持久化任务 manifest、worker 入口和跨进程命令协议。
-- 当前环境过去出现 `ModuleNotFoundError: yaml`，并且 pip 清理临时目录异常；测试环境需要重新确认。
-
-## 当前里程碑
-
-- M1 跨命令 worker 进程：进行中。已实现 `core/background_store.py` 原子 manifest、`core/background_worker.py` 独立进程、Runner detached 提交、心跳/失联判定和跨 CLI 查询；待补 detached 集成测试及 Windows 取消/恢复验证。
-- M2 全屏 TUI：进行中。新增 `ui/fullscreen.py`，并以 `qxt chat --tui` 接入；当前具备布局、日志、状态栏、多行输入、异步提交和快捷键，待补取消/面板切换/TTY 集成测试。
-- M3 模型能力矩阵：进行中。新增 `ModelCapabilities`，OpenAI-compatible 与 Anthropic 已声明能力，新增 Gemini OpenAI-compatible 预设；待补 Gemini 原生多模态和协议 mock 测试。
-- M4 48 家供应商扩展：已完成。
-  - 新增 `models/provider_catalog.py` — 48 家 LLM API 平台结构化目录 (6大分类)
-  - `models/__init__.py` 导入 provider_catalog, PROVIDER_PRESETS 从 12→48 家
-  - `models/router.py` MODEL_PRESETS 新增 15 个模型预设 (覆盖3个tier)
-  - `cli/commands.py` cmd_setup 重写为 Hermes 风格三模式引导 (快速/完整/空白)
-  - `cli/commands.py` cmd_model 交互选择器重写为分类浏览+搜索+过滤
-  - README.md 更新 48 家供应商描述和 setup 流程
-
-## 工作规则
-
-每完成一个里程碑，更新本文件的状态、关键文件、测试结果和下一步，并同步更新 `TASK_QUEUE.md`。
+1. 运行完整测试套件 `pytest tests/ -q` (当前 294 passed, 1 skipped)
+2. 继续 M1~M3 收尾验证

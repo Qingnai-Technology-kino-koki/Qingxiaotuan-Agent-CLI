@@ -89,7 +89,7 @@ class LanguagePlugin(Plugin):
             name="project_languages",
             description="识别工作区中的 Python/TypeScript 工程和质量检查入口",
             parameters={"type": "object", "properties": {}, "required": []},
-            handler=project_languages, group="code",
+            handler=project_languages, group="code", read_only=True,
         ))
         registry.register(Tool(
             name="language_checks",
@@ -99,5 +99,5 @@ class LanguagePlugin(Plugin):
                 "properties": {"language": {"type": "string", "enum": ["auto", "python", "typescript"]}},
                 "required": [],
             },
-            handler=language_checks, group="code",
+            handler=language_checks, group="code", read_only=True,
         ))

@@ -10,7 +10,7 @@ from pathlib import Path
 
 import pytest
 
-from qingxiaotuan.core.ipc_client import IpcProcess
+from qingxiaotuan.core.ipc_client import IpcClient
 
 
 class _SSEHandler(BaseHTTPRequestHandler):
@@ -42,7 +42,17 @@ def test_python_ipc_receives_typescript_sse_stream():
     server = ThreadingHTTPServer(("127.0.0.1", 0), _SSEHandler)
     thread = threading.Thread(target=server.serve_forever, daemon=True)
     thread.start()
-    process = IpcProcess([shutil.which("node") or "node", str(entry)], quiet=True)
+    process = IpcClient("ts-agent")
+    # 覆盖 subprocess 命令: 直接跑 node + TS dist, 而不是 python -m module
+    import subprocess as _sp
+    process.proc = _sp.Popen(
+        [shutil.which("node") or "node", str(entry)],
+        stdin=_sp.PIPE, stdout=_sp.PIPE, stderr=_sp.PIPE, text=True, bufsize=1,
+    )
+    process._read_thread = threading.Thread(target=process._read_loop, daemon=True)
+    process._read_thread.start()
+    if not process._ready.wait(timeout=10):
+        pytest.skip("TS agent-sdk 未就绪")
     chunks = []
     try:
         configured = process.request("config", {

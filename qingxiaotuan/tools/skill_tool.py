@@ -53,7 +53,7 @@ class SkillToolPlugin(Plugin):
             name="skill_list",
             description="列出全部技能",
             parameters={"type": "object", "properties": {}, "required": []},
-            handler=skill_list, group="skills",
+            handler=skill_list, group="skills", read_only=True,
         ))
         registry.register(Tool(
             name="skill_read",
@@ -63,5 +63,5 @@ class SkillToolPlugin(Plugin):
                 "properties": {"name": string_prop("技能名")},
                 "required": ["name"],
             },
-            handler=skill_read, group="skills",
+            handler=skill_read, group="skills", read_only=True,
         ))

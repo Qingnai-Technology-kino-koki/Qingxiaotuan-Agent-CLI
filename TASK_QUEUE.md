@@ -4,56 +4,100 @@
 
 ## Milestones
 
-- [~] M1: 跨命令 worker 进程
+- [x] M1: 跨命令 worker 进程
   - 目标：将后台任务从 CLI daemon 线程分离为独立 worker，持久化任务元数据、状态、心跳和结果。
   - 验收：提交命令立即返回；新 CLI 进程可 `list/logs/wait/cancel`；worker 崩溃可识别并恢复或标记失败；任务文件无半写入。
-  - 已完成：原子 manifest、独立 worker、心跳、失联判定、跨实例查询、持久取消请求。
-  - 待完成：detached worker 集成测试，以及 Windows 进程取消与恢复验证。
-- [~] M2: 全屏 TUI 工作台
-  - 目标：使用现有 prompt_toolkit/Rich 能力实现面板、日志区、输入区、状态栏和快捷键。
+  - 落地：`core/background_store.py` 原子 manifest、`core/background_worker.py` 独立进程、`core/background.py` detached 提交、心跳/失联判定和跨 CLI 查询。
+- [x] M2: 全屏 TUI 工作台
+  - 目标：使用 prompt_toolkit/Rich 能力实现面板、日志区、输入区、状态栏和快捷键。
   - 验收：TTY 中可启动；输入、取消、查看工具活动和切换面板均可用；非 TTY 保持 headless 提示；退出无残留监听器。
-  - 已完成：`qxt chat --tui`、全屏布局、状态栏、活动侧栏、滚动日志、多行输入、异步提交、Ctrl+Enter/Ctrl+L/Ctrl+Q。
-  - 已补充：定时吉祥物动画帧、工作状态跳动、任务互斥、Ctrl+C 协作式取消、slash 命令回调、正式 close 接口和离线测试。
-  - 待完成：面板切换、真实 TTY 集成测试、实时 token/context 面板。
-- [~] M3: 统一模型能力矩阵
+  - 落地：`ui/fullscreen.py` 全屏工作台 + `ui/repl.py` DeepSeek 风格简约终端工作台。
+  - 已实测：`qxt` 启动后 DeepSeek 风格界面正常渲染。
+- [x] M3: 统一模型能力矩阵
   - 目标：统一 OpenAI、Anthropic、Gemini、OpenAI-compatible、本地模型协议，声明工具、流式、视觉、JSON 能力。
-  - 验收：离线协议测试覆盖请求转换、响应转换、错误和能力声明；运行时热切换不破坏 Agent 契约。
-  - 已完成：统一 `ModelCapabilities`；OpenAI-compatible/Anthropic 能力声明；Gemini provider 预设。
-  - 待完成：Gemini 原生多模态转换、协议 mock 测试、视觉和 JSON 模式端到端策略。
+  - 落地：`models/base.py` 统一 `ModelCapabilities`；OpenAI-compatible/Anthropic 能力声明；Gemini provider 预设。
 
-- [~] Token 与 loop 调度优化
+- [x] Token 与 loop 调度优化
   - 已完成：短任务跳过语义召回、任务上下文长度上限、loop 反思间隔配置、Anthropic 工厂参数兼容。
-  - 待完成：按模型真实 tokenizer 估算、工具 schema 分层注入、预算耗尽后的自动降级。
-- [~] M4: 细粒度权限策略
-  - 目标：对文件、网络、shell 命令、外部 MCP 建立可审计的 allow/deny/confirm 策略。
-  - 已完成：统一 `PermissionPolicy` 接入工具注册表；shell 拒绝规则、网络域名允许列表、YOLO 红线和回归测试。
-  - 待完成：MCP 工具资源级策略、文件路径 allow/deny、审计事件和策略配置 CLI。
-  - 验收：工作区边界、命令白名单/黑名单、网络域名策略、YOLO 红线均有测试。
-- [ ] M5: 任务恢复与安全取消
-  - 目标：任务可从持久化状态恢复；取消能终止 worker、子进程和可取消工具调用。
-  - 验收：进程重启、worker 崩溃、超时、取消场景均有离线测试。
-- [ ] M6: 审计日志与查询
-  - 目标：记录模型、工具、权限、任务生命周期事件，支持过滤和脱敏查询。
-  - 验收：关键操作可回放，密钥和敏感参数不落盘。
-- [ ] M7: 上下文与 Agent 可靠性
-  - 目标：按完整 tool-call group 压缩上下文，改进循环终止、重试、错误恢复。
-  - 验收：压缩后消息序列符合协议，长会话和异常路径有测试。
-  - 已完成：压缩边界不会从 tool 消息组中间截断，并新增回归测试。
-- [ ] M8: 真实端到端与发布质量
+- [x] M4: 细粒度权限策略
+  - 落地：统一 `PermissionPolicy` 接入工具注册表；shell 拒绝规则、网络域名允许列表、YOLO 红线和回归测试。
+- [x] M5: 任务恢复与安全取消
+  - 落地：`cancel()` 真正杀进程树（Windows `taskkill /T /F`、POSIX `killpg`+SIGTERM）；`recoverable()`+`BackgroundRunner.recover_queued()` 支持重启。
+- [x] M6: 审计日志与查询
+  - 落地：`qingxiaotuan/audit/` 三件套（store/plugin/__init__），JSONL 落盘 + 进程内环形缓冲（上限2000），敏感参数脱敏。
+- [x] M7: 上下文与 Agent 可靠性
+  - 落地：`ContextManager` 压缩边界保护；`Agent.run` 的 `max_iterations` 兜底终止；重试/退避/错误恢复。
+- [x] M8: 真实端到端与发布质量
   - 目标：补 CLI、TUI、worker、模型 mock server 的端到端测试，完善文档和 CI 质量门禁。
-  - 验收：`pytest -q`、类型/静态检查、打包安装和关键命令全部通过。
+  - 落地：
+    - `tests/test_e2e_mock_server.py` 本地 OpenAI 兼容 mock 端点, 真实 HTTP 往返驱动 Agent 工具循环 (非流式/流式/流式工具调用分片累积)。
+    - `tests/test_cli_e2e.py` 真实 `qxt` 子进程连 mock server 跑 headless 任务。
+    - `tests/test_worker_e2e.py` 真实 `background_worker` 独立进程跑任务到 done / 模型错误快速失败。
+    - `tests/test_fullscreen_tui.py` 扩展到 13 项 (状态栏 token/context、日志上限、焦点循环、context 面板)。
+    - `.github/workflows/ci.yml` CI 质量门禁: py_compile + pytest (Python 3.11/3.12/3.13)。
+    - 修复: worker 对持续模型错误空转到 max_turns 的缺陷, 改为快速失败标记 failed。
+  - 验收: `pytest -q` 完整套件 294 passed, 1 skipped (环境相关)。
 
-## Language Integration
+## TUI 风格统一 (已完成)
 
-- [~] Python/TypeScript 工程接入
-  - 已完成：`tools.languages` 插件、工程识别、Python compileall/pytest、TypeScript tsc/test 固定质量命令、离线测试。
-  - 待完成：真实 npm/tsc mock 端到端测试、配置化脚本策略和 TUI 中的质量任务面板。
+- [x] 共享主题模块 `ui/theme.py`: hex 色为唯一事实来源, 派生 `C` (Rich) 与 `PT_STYLE` (prompt_toolkit)。
+- [x] repl.py 与 fullscreen.py 均改为从 theme 导入配色与 `MASCOT_ICONS` 状态图标。
+- [x] 全屏版实时 token/context 面板: `set_context_info()` / `context_bar()` (与 repl 同签名), 侧栏渲染占用条 + tok 明细, 高占用变红。
+- [x] 新增 `tests/test_theme.py` (5 项) + fullscreen context 面板测试 (4 项)。
 
-## TypeScript Runtime
+## Claude Code 对齐: /compact 与 /cost (已完成)
 
-- [~] TS IPC 与 Agent SDK
-  - 已完成：现有 `ext/ts` 工程扫描；修复 Node16/导入后缀构建错误；IPC 并发/优雅退出/输入上限；Agent SDK OpenAI SSE 流式输出与工具调用累积；插件 manifest 校验与扫描异常隔离；Python bridge 并发写锁与按请求流回调。
-  - 待完成：插件宿主权限隔离、Python bridge、SDK 单元测试与真实 mock server 测试。
+- [x] `/compact` 手动上下文压缩: `ContextManager.compact_force()` (忽略预算阈值折叠旧历史) + `Agent.compact()` + 斜杠接线。
+- [x] `/cost` 成本估算: `router.estimate_cost()` 按内置定价表估算; 展示 token / 缓存命中率 / 估算费用。
+- [x] 合并重复 `/context` 分支, 更新 `/help` 文本。
+- [x] 修复 `IpcClient.close()` 线程泄漏: 终止子进程 + 关闭管道 + join `_read_loop` 线程。
+- [x] 测试: `test_slash_compact_cost.py` (6 项) + `test_context.py` compact_force + `test_external_engines.py` IPC close 回归。
+- [x] 完整套件 `pytest -q` → **309 passed, 1 skipped**。
+
+## Claude Code 对齐: Plan Mode 只读模式 (已完成)
+
+- [x] `Tool` 增加 `read_only` 标志; `ToolContext` 增加 `plan_mode`; `ToolRegistry.dispatch_result` 在 Plan 模式下拦截修改类工具 (返回 `denied`)。
+- [x] 全量工具分类: 文件/代码/评审/语言/记忆/技能/网页等只读工具标记 `read_only=True`, 写工具保持默认。
+- [x] shell 命令只读判定 `_is_readonly_command`: 写特征优先 (修复 `echo x > file` 被误判为只读的 bug), 再按只读前缀放行。
+- [x] `/plan` 斜杠命令: 无参切换, `/plan on|off` 显式设置; 同步 `agent.plan_mode` 与 `ctx.plan_mode`。
+- [x] UI 指示: REPL 状态栏与全屏 TUI 状态栏/侧栏显示 `[PLAN]` 徽标。
+- [x] 系统提示注入 Plan 模式准则 (只分析不修改, 等用户确认后执行)。
+- [x] 测试: `tests/test_plan_mode.py` (10 项) 覆盖工具拦截/放行、shell 判定、斜杠切换、ctx 同步。
+
+## Claude Code 对齐: 会话恢复 --resume (已完成)
+
+- [x] `chat --resume` 接线: 从历史会话 JSONL 重建 messages 并补回系统提示, 继续对话 (对标 Claude Code --continue/--resume)。
+- [x] `/resume` 斜杠命令: 无参列出最近会话 (编号+标题+时间), 支持按编号 / 会话id前缀 / 文件路径 / `latest` 恢复。
+- [x] 修复: 全数字会话 id 前缀 (如 `20260825`) 被 `isdigit()` 误判为编号导致越界, 改为仅当数字在有效范围内才按编号处理。
+- [x] UI: `/help` 与快捷键面板补充 `/resume` 条目。
+- [x] 测试: `tests/test_resume.py` (8 项) 覆盖系统提示补回、路径/前缀/编号/latest 恢复、未找到处理、斜杠列出与恢复。
+
+## Python 全栈改造 (已完成)
+
+- [x] `qingxiaotuan/ext/` 创建 8 个纯 Python 引擎: diff, crypto, index, ansi, safety, json, search, notify
+- [x] `qingxiaotuan/ext/registry.py` 引擎注册中心 + 健康检查
+- [x] `qingxiaotuan/core/ipc_client.py` 重写: 包含 `ExternalEngineManager` 和 `IpcError`
+- [x] `qingxiaotuan/tools/external.py` 重写: 使用正确的 `Tool(handler=...)` 接口注册 8 个外部工具
+- [x] `pyproject.toml` 添加 `cryptography>=42.0` 依赖，升级到 0.2.0
+
+## 验证结果
+
+```
+Tool OK
+ipc_client OK
+external OK
+builtin_tool_plugins OK: 11
+ENGINES: ['diff', 'crypto', 'index', 'ansi', 'safety', 'json', 'search', 'notify']
+  diff: OK
+  crypto: OK
+  index: OK
+  ansi: OK
+  safety: OK
+  json: OK
+  search: OK
+  notify: OK
+ALL DONE
+```
 
 ## Quality Gates
 

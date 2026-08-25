@@ -23,6 +23,42 @@ YOLO_REDLINE = (
     ":(){",
 )
 
+# Plan 模式下的写操作特征: 命中任一即视为修改类命令, 只读模式拦截
+_WRITE_MARKERS = (
+    ">", ">>", "| tee", "rm ", "mv ", "cp ", "mkdir", "touch ", "chmod", "chown",
+    "git add", "git commit", "git push", "git reset", "git checkout", "git clean",
+    "git stash", "git merge", "git rebase", "git tag", "git branch -d", "git branch -D",
+    "npm install", "npm i ", "npm run build", "pip install", "pip uninstall",
+    "pipenv install", "poetry add", "poetry install", "cargo build", "cargo install",
+    "go build", "go install", "go mod", "make ", "cmake", "docker build", "docker run",
+    "docker compose", "kubectl apply", "terraform apply", "python -m pytest --cov",
+    "pytest --cov", "coverage run", "black ", "isort ", "ruff --fix", "yarn add",
+    "pnpm add", "bun add", "conda install", "apt install", "apt-get install",
+    "brew install", "brew uninstall", "dd ", "mkfs", "fdisk", "kill ", "pkill",
+    "taskkill", "del ", "erase ", "ren ", "copy ", "xcopy", "robocopy", "move ",
+    "curl -o", "wget -O", "wget -o", "tar -x", "unzip", "git init", "git clone",
+    "git config", "git remote", "git fetch", "git pull",
+)
+
+
+def _is_readonly_command(command: str) -> bool:
+    """判断命令是否只读 (Plan 模式放行)。保守判断: 命中写特征即视为修改类。"""
+    c = command.strip().lower()
+    if not c:
+        return True
+    # 写特征优先: 命中任一即视为修改类 (即使以 echo/ls 等只读前缀开头, 如 echo x > file)
+    if any(marker in c for marker in _WRITE_MARKERS):
+        return False
+    # 纯管道/查看类命令开头
+    first = c.split("|")[0].strip()
+    readonly_prefixes = ("ls", "cat", "head", "tail", "grep", "find", "echo",
+                         "pwd", "whoami", "date", "which", "where", "type",
+                         "git status", "git diff", "git log", "git show",
+                         "git branch", "git remote -v", "python -c", "python -m py_compile")
+    if any(first.startswith(p) for p in readonly_prefixes):
+        return True
+    return True
+
 
 def _risk_to_advice(reasons: list, previews: list) -> str:
     parts = []
@@ -63,6 +99,11 @@ def _pre_exec_guard(ctx: ToolContext, command: str) -> str | None:
 
 
 def run_shell(ctx: ToolContext, command: str, timeout: int = 0) -> str:
+    # 0) Plan 模式: 只读命令放行, 写命令拦截 (对标 Claude Code Plan Mode)
+    if getattr(ctx, "plan_mode", False) and not _is_readonly_command(command):
+        return ("[Plan 模式] 只读模式已启用, 已阻止修改类命令:\n"
+                f"  {command}\n"
+                "请先输出分析与实施计划, 退出 Plan 模式后再执行修改。")
     # 1) 执行前安全护栏 (最小影响半径)
     guard = _pre_exec_guard(ctx, command)
     if guard:

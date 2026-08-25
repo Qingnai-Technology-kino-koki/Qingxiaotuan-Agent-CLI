@@ -106,5 +106,5 @@ class WebPlugin(Plugin):
                 "properties": {"url": string_prop("http/https URL")},
                 "required": ["url"],
             },
-            handler=web_fetch, group="web",
+            handler=web_fetch, group="web", read_only=True,
         ))

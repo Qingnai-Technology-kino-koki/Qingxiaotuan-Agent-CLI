@@ -118,3 +118,28 @@ def test_keymap_panel_safe_in_headless():
     res = u.keymap_panel()
     assert res is None
 
+
+# ----------------------------------------------------- Kimi 风格 banner
+
+def test_banner_renders_kimi_style_box():
+    u = _ui()
+    import io
+    from contextlib import redirect_stdout
+    buf = io.StringIO()
+    cfg = {"session_id": None}
+    with redirect_stdout(buf):
+        u.banner(cfg, "C:/Users/28726", "deepseek-chat", "default",
+                 mode="standard", effort="high")
+    out = buf.getvalue()
+    # 关键元素: 双线盒边框 + 欢迎语 + 字段行
+    assert "Welcome to 青小团 CLI!" in out
+    assert "Directory:" in out
+    assert "Session:" in out
+    assert "Model:" in out
+    assert "Version:" in out
+    assert "▐█▛█▛█▌" in out  # 品牌装饰块
+    # 不再画 ASCII 团子吉祥物 (旧版用 Mascot.ascii 的 ( ◡ ) 等)
+    assert "( ◡ )" not in out
+    # 底部状态栏仍带吉祥物状态图标 (动态吉祥物保留在状态栏)
+    assert "◦" in out or "●" in out or "◍" in out
+

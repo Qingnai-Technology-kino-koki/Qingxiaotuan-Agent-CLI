@@ -17,13 +17,13 @@ from qingxiaotuan.self_improve.reflector import Reflector, Experience
 from qingxiaotuan.self_improve.rulegen import RuleGenerator
 from qingxiaotuan.self_improve.skillgen import SkillGenerator
 
-AVAIL = set(ExternalEngineManager({}).available())
+AVAIL = set(ExternalEngineManager().list_engines())
 
 
 # ----------------------------------------------------------------- safety 引擎
 @pytest.mark.skipif("safety" not in AVAIL, reason="safety 引擎未编译/不可用")
 def test_safety_score_critical_block():
-    m = ExternalEngineManager({})
+    m = ExternalEngineManager()
     r = m.call("safety", "score", {"command": "git push --force origin main"})
     assert r["risk"] == "critical"
     assert r["block"] is True
@@ -33,7 +33,7 @@ def test_safety_score_critical_block():
 
 @pytest.mark.skipif("safety" not in AVAIL, reason="safety 引擎未编译/不可用")
 def test_safety_score_safe_none():
-    m = ExternalEngineManager({})
+    m = ExternalEngineManager()
     r = m.call("safety", "score", {"command": "ls -la src/"})
     assert r["risk"] == "none"
     assert r["block"] is False
@@ -58,7 +58,7 @@ def test_safety_analyze_overall_advice():
 @pytest.mark.skipif("safety" not in AVAIL, reason="safety 引擎未编译/不可用")
 def test_safety_process_stable_across_calls():
     """回归: 曾因 double-free 导致第二个请求时进程退出, 现应稳定长驻。"""
-    m = ExternalEngineManager({})
+    m = ExternalEngineManager()
     for i in range(5):
         r = m.call("safety", "score", {"command": "ls" if i % 2 else "DROP TABLE users"})
         assert r["risk"] in ("none", "critical")

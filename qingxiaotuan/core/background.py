@@ -210,8 +210,11 @@ class BackgroundRunner:
         self._store.reconcile_stale(float(self.config.get("background.heartbeat_timeout", 90)))
         jobs: List[BackgroundJob] = []
         for data in self._store.list():
-            store = SessionStore(self.config.home)
-            store.file = Path(data.get("session_file", self.config.home / "sessions" / f"{data['job_id']}.jsonl"))
+            home = Path(getattr(self.config, "home", None) or self.workspace)
+            store = SessionStore(home)
+            # session_file 显式存为 None 时回退到默认路径 (dict.get 不替 None 兜底)。
+            session_file = data.get("session_file") or (home / "sessions" / f"{data['job_id']}.jsonl")
+            store.file = Path(session_file)
             jobs.append(BackgroundJob(
                 job_id=data["job_id"], task=data.get("task", ""),
                 started_at=data.get("started_at", time.time()), thread=None, store=store,
@@ -233,8 +236,15 @@ class BackgroundRunner:
         data = self._store.get(job_id)
         if data is None:
             return None
-        session = SessionStore(self.config.home)
-        session.file = Path(data.get("session_file", self.config.home / "sessions" / f"{job_id}.jsonl"))
+        # config.home 可能缺失 (如测试/异常配置), 用 workspace 兜底, 避免 getter 崩溃。
+        _ch = getattr(self.config, "home", None)
+        _ws = getattr(self, "workspace", None)
+        home = Path(_ch if _ch is not None else _ws)
+        session = SessionStore(home)
+        # session_file 在 manifest 中显式存为 None 时, dict.get 会返回 None 而非默认路径,
+        # 故用 `or` 兜底 (None / 空串都回退到默认会话文件)。
+        session_file = data.get("session_file") or (home / "sessions" / f"{job_id}.jsonl")
+        session.file = Path(session_file)
         return BackgroundJob(job_id=job_id, task=data.get("task", ""),
                              started_at=data.get("started_at", time.time()), thread=None,
                              store=session, status=data.get("status", "unknown"),
@@ -242,14 +252,32 @@ class BackgroundRunner:
                              turns=int(data.get("turns", 0)))
 
     def cancel(self, job_id: str) -> bool:
+        """取消一个后台任务, 真正终止其 worker 进程/线程及其子进程树。
+
+        返回 True 表示已发出取消 (进程树已杀 / 线程已标记退出); False 表示任务
+        不存在或已不在运行。
+        """
         job = self.get(job_id)
-        if job is None or job.status != "running":
+        if job is None or job.status not in ("running", "queued"):
             return False
-        data = self._store.update(job_id, status="cancel_requested")
-        if data is not None:
-            return True
-        job.status = "cancelled"
-        job.store.append("job.cancel", {"job_id": job_id})
+
+        # 1) detached worker: 从 manifest 取到真实 pid, 杀掉整个进程组 (连根拔起)。
+        manifest = self._store.get(job_id)
+        pid = manifest.get("pid") if manifest else None
+        if pid:
+            from .background_store import kill_process_tree
+            kill_process_tree(int(pid))
+
+        # 2) 线程版任务: 置 cancelled, _work 循环每轮开头会立即退出。
+        with self._lock:
+            live = self._jobs.get(job_id)
+        if live is not None:
+            live.status = "cancelled"
+
+        # 3) 落盘最终状态。
+        self._store.update(job_id, status="cancelled", heartbeat=time.time())
+        if live is not None:
+            live.store.append("job.cancel", {"job_id": job_id})
         return True
 
     def wait(self, job_id: str, timeout: Optional[float] = None) -> Optional[BackgroundJob]:
@@ -282,3 +310,29 @@ class BackgroundRunner:
                 self._jobs.pop(jid, None)
                 removed += 1
         return removed
+
+    def recover_queued(self) -> List[str]:
+        """CLI 进程重启后, 重启所有 queued 且无人接管的任务 (崩溃恢复)。
+
+        场景: 上一个 CLI 进程在 submit_detached 后崩溃, worker 根本没起来; 或 worker
+        进程已死但 manifest 仍停在 queued。返回成功重启的任务 job_id 列表。
+        """
+        restarted: List[str] = []
+        for job_id in self._store.recoverable():
+            data = self._store.get(job_id)
+            if data is None:
+                continue
+            task = data.get("task", "")
+            workspace = data.get("workspace", self.workspace)
+            try:
+                relaunched = self.submit_detached(
+                    task,
+                    yolo=bool(data.get("yolo", False)),
+                )
+                # submit_detached 已写新 worker pid; 补 workspace (recover 时尽量还原)。
+                self._store.update(relaunched["job_id"], workspace=workspace)
+                restarted.append(job_id)
+            except Exception as exc:  # noqa: BLE001
+                self._store.update(job_id, status="failed",
+                                   error=f"恢复重启失败: {type(exc).__name__}: {exc}")
+        return restarted

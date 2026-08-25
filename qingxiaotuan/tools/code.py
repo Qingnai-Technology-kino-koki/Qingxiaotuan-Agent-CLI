@@ -214,7 +214,7 @@ class CodeToolPlugin(Plugin):
                 },
                 "required": [],
             },
-            handler=codebase_map, group="code",
+            handler=codebase_map, group="code", read_only=True,
         ))
         registry.register(Tool(
             name="find_symbol",
@@ -227,7 +227,7 @@ class CodeToolPlugin(Plugin):
                 },
                 "required": ["symbol"],
             },
-            handler=find_symbol, group="code",
+            handler=find_symbol, group="code", read_only=True,
         ))
         registry.register(Tool(
             name="find_references",
@@ -240,7 +240,7 @@ class CodeToolPlugin(Plugin):
                 },
                 "required": ["symbol"],
             },
-            handler=find_references, group="code",
+            handler=find_references, group="code", read_only=True,
         ))
         registry.register(Tool(
             name="run_tests",
@@ -258,5 +258,5 @@ class CodeToolPlugin(Plugin):
             name="git_status",
             description="只读查看 git 改动 (status+diff)",
             parameters={"type": "object", "properties": {}, "required": []},
-            handler=git_status, group="code",
+            handler=git_status, group="code", read_only=True,
         ))

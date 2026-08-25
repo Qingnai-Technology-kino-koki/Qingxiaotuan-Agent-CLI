@@ -2,7 +2,7 @@
 name: learned-ext-search
 description: 由 self-improve 自动提炼的技能草稿 (源自工具 ext_search 高频成功)。待人工审阅后启用。
 source: self-improve
-generated_at: 2026-08-24T13:20:54
+generated_at: 2026-08-25T14:42:01
 status: draft
 ---
 

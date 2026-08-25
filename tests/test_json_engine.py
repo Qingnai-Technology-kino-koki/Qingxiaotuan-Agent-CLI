@@ -1,4 +1,4 @@
-"""JSON 结构化引擎 (C 侧 qxt_json) 集成测试。
+"""JSON 结构化引擎 (纯 Python) 集成测试。
 
 覆盖:
 - pointer: RFC 6901 取值 (嵌套对象/数组)
@@ -12,33 +12,32 @@ import pytest
 
 from qingxiaotuan.core.ipc_client import ExternalEngineManager
 
-AVAIL = set(ExternalEngineManager({}).available())
+AVAIL = set(ExternalEngineManager().list_engines())
 HAVE = "json" in AVAIL
 
 
 @pytest.mark.skipif(not HAVE, reason="json 引擎未编译/不可用")
 def test_pointer_nested():
-    m = ExternalEngineManager({})
+    m = ExternalEngineManager()
     doc = {"a": {"b": [10, 20, {"c": "hi"}]}}
-    r = m.call("json", "pointer", {"doc": doc, "pointer": "/a/b/2/c"})
+    r = m.call("json", "pointer_get", {"doc": doc, "pointer": "/a/b/2/c"})
     assert r["value"] == "hi"
 
 
 @pytest.mark.skipif(not HAVE, reason="json 引擎未编译/不可用")
 def test_pointer_not_found():
-    m = ExternalEngineManager({})
+    m = ExternalEngineManager()
     doc = {"x": 1}
-    import pytest as _pytest
-    with _pytest.raises(Exception):
-        m.call("json", "pointer", {"doc": doc, "pointer": "/nope"})
+    with pytest.raises(Exception):
+        m.call("json", "pointer_get", {"doc": doc, "pointer": "/nope"})
 
 
 @pytest.mark.skipif(not HAVE, reason="json 引擎未编译/不可用")
 def test_diff_one_change():
-    m = ExternalEngineManager({})
+    m = ExternalEngineManager()
     a = {"x": 1, "y": 2}
     b = {"x": 1, "y": 99}
-    r = m.call("json", "diff", {"a": a, "b": b})
+    r = m.call("json", "diff", {"base": a, "overlay": b})
     assert r["count"] == 1
     ch = r["changes"][0]
     assert ch["op"] == "replace"
@@ -47,7 +46,7 @@ def test_diff_one_change():
 
 @pytest.mark.skipif(not HAVE, reason="json 引擎未编译/不可用")
 def test_merge_overlay():
-    m = ExternalEngineManager({})
+    m = ExternalEngineManager()
     base = {"k1": 1, "k2": {"n": 2}}
     ov = {"k2": {"n": 20}, "k3": 3}
     r = m.call("json", "merge", {"base": base, "overlay": ov})

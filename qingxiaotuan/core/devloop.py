@@ -44,7 +44,7 @@ class DevLoop:
 
         # 初始化 Reflector 反思引擎
         self.reflector = Reflector(
-            workspace=agent.workspace,
+            workspace=getattr(agent, "workspace", "."),
             max_auto_fix=config.get("reflector.max_auto_fix", 2),
             timeout=config.get("reflector.verify_timeout", 120),
         )

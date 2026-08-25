@@ -3,6 +3,7 @@
 `FullScreenTUI` 提供状态栏、活动面板、事件日志和多行输入框。调用方通过
 `on_submit` 注入 Agent 处理函数；函数可以同步返回文本，也可以返回 None 并自行
 通过 `append_log` 更新进度。Ctrl+Enter 提交，Ctrl+L 清空日志，Ctrl+Q 退出。
+Tab 键切换焦点（侧栏/日志区/输入区）。
 """
 
 from __future__ import annotations
@@ -25,6 +26,8 @@ except ImportError:  # 旧版本仍在 containers 里
     from prompt_toolkit.layout.containers import ScrollablePane
 from prompt_toolkit.styles import Style
 from prompt_toolkit.widgets import TextArea
+from .mascot import Mascot, IDLE
+from .theme import PT_STYLE, MASCOT_ICONS, context_bar, context_style
 
 
 class FullScreenTUI:
@@ -45,6 +48,12 @@ class FullScreenTUI:
         self._task_lock = threading.Lock()
         self._mascot_frame = 0
         self._mascot_state = "idle"
+        self._mascot = Mascot(IDLE)
+        self._tokens = 0
+        self._context_pct: Optional[float] = None
+        self._context_info: Optional[dict] = None  # {"estimated_tokens":.., "budget_tokens":..}
+        self._plan_mode = False  # Plan 模式: 只读, 状态栏/侧栏显示 [PLAN]
+        self._focus_index = 0  # 0=侧栏, 1=日志, 2=输入区
         output = None
         # prompt_toolkit 在 Windows 无控制台时会直接创建 Win32Output 并抛异常；
         # 测试、CI 和非 TTY 调用使用 DummyOutput，真实终端仍走默认输出。
@@ -53,6 +62,7 @@ class FullScreenTUI:
                 os.environ.get("PYTEST_CURRENT_TEST")
                 or os.environ.get("PYTEST_VERSION")
                 or os.environ.get("CI")
+                or "pytest" in sys.modules
             )
             if is_test_or_ci or not getattr(sys.stdout, "isatty", lambda: False)():
                 output = DummyOutput()
@@ -67,14 +77,7 @@ class FullScreenTUI:
         self._app_kwargs = {
             "layout": Layout(self._build_layout()),
             "key_bindings": self._keys(),
-            "style": Style.from_dict({
-                "status": "bg:#16324f #d9f0ff",
-                "title": "bold #63d7c5",
-                "panel": "#8aa4b8",
-                "log": "#e8eef2",
-                "input": "#f5f7f8",
-                "bottom-toolbar": "#8aa4b8",
-            }),
+            "style": Style.from_dict(PT_STYLE),
             "full_screen": True,
             "mouse_support": True,
             "output": output,
@@ -97,7 +100,7 @@ class FullScreenTUI:
         self.input.window.style = "class:input"
         input_box = self.input
         footer = Window(FormattedTextControl(
-            "Ctrl+J 提交 · Ctrl+L 清空日志 · Ctrl+C 取消 · Ctrl+Q 退出"), height=1,
+            "Tab 切换焦点 · Ctrl+J 提交 · Ctrl+L 清空日志 · Ctrl+C 取消 · Ctrl+Q 退出"), height=1,
             style="class:bottom-toolbar")
         return HSplit([header, VSplit([side, log]), input_box, footer])
 
@@ -114,6 +117,11 @@ class FullScreenTUI:
             self._events.clear()
             event.app.invalidate()
 
+        @keys.add("tab")
+        def _toggle_focus(event) -> None:
+            self._cycle_focus()
+            event.app.invalidate()
+
         @keys.add("c-c")
         def _cancel(event) -> None:
             if not self._busy:
@@ -127,7 +135,7 @@ class FullScreenTUI:
             self.append_log("已请求取消当前任务")
             event.app.invalidate()
 
-        @keys.add("c-j")
+        @keys.add("enter")
         def _submit(event) -> None:
             text = self.input.text.strip()
             if not text:
@@ -168,6 +176,13 @@ class FullScreenTUI:
             self._busy = False
         self._app.invalidate()
 
+    def _cycle_focus(self) -> None:
+        """Tab 键循环切换焦点：侧栏 → 日志 → 输入区 → 侧栏。"""
+        self._focus_index = (self._focus_index + 1) % 3
+        self.append_log(
+            f"[焦点] 切换到 {'侧栏' if self._focus_index == 0 else '日志' if self._focus_index == 1 else '输入区'}"
+        )
+
     def append_log(self, text: str) -> None:
         """追加一条事件日志，并通知终端刷新。"""
         self._events.append(str(text))
@@ -186,8 +201,39 @@ class FullScreenTUI:
         """设置吉祥物状态：idle、thinking、working、alert 或 done。"""
         if state in {"idle", "thinking", "working", "alert", "done"}:
             self._mascot_state = state
+            self._mascot.set(state)
             if self._app.is_running:
                 self._app.invalidate()
+
+    def add_tokens(self, count: int) -> None:
+        """增加会话 token 计数，供 CLI 回调更新状态栏。"""
+        self._tokens += max(0, int(count))
+        if self._app.is_running:
+            self._app.invalidate()
+
+    def set_context_pct(self, percent: float) -> None:
+        """设置上下文占用百分比（0 到 100）。"""
+        self._context_pct = max(0.0, min(100.0, float(percent)))
+        if self._app.is_running:
+            self._app.invalidate()
+
+    def set_plan_mode(self, enabled: bool) -> None:
+        """设置 Plan 模式开关, 状态栏/侧栏显示 [PLAN] 指示。"""
+        self._plan_mode = bool(enabled)
+        if self._app.is_running:
+            self._app.invalidate()
+
+    def set_context_info(self, estimated: int, budget: int) -> None:
+        """设置上下文估算/预算 token, 侧栏实时渲染占用条。"""
+        self._context_info = {"estimated_tokens": int(estimated), "budget_tokens": int(budget)}
+        budget = budget or 1
+        self._context_pct = max(0.0, min(100.0, estimated / budget * 100.0))
+        if self._app.is_running:
+            self._app.invalidate()
+
+    def context_bar(self, info: dict) -> None:
+        """与 repl.UI.context_bar 同签名: 按 estimated/budget 更新占用条。"""
+        self.set_context_info(info.get("estimated_tokens", 0), info.get("budget_tokens", 0) or 1)
 
     def run(self) -> None:
         """阻塞运行全屏应用，退出后释放终端控制权。"""
@@ -212,31 +258,38 @@ class FullScreenTUI:
                 self._app.invalidate()
 
     def _render_status(self):
-        frames = {
-            "idle": ["◦", "·", "◦", "·"],
-            "thinking": ["⠋", "⠙", "⠹", "⠸"],
-            "working": ["●", "◉", "●", "◉"],
-            "alert": ["!", "⚠", "!", "⚠"],
-            "done": ["✓", "✦", "✓", "✦"],
-        }
-        icon = frames.get(self._mascot_state, frames["idle"])[self._mascot_frame]
-        return [("class:title", f"  {icon} {self.title}  "), ("", f"| {self._status}")]
+        icon = MASCOT_ICONS.get(self._mascot_state, "◦")
+        parts = [f"{icon} {self.title}", self._status]
+        if self._plan_mode:
+            parts.append("[PLAN]")
+        if self._tokens:
+            parts.append(f"tok={self._tokens}")
+        if self._context_pct is not None:
+            parts.append(f"ctx={self._context_pct:.0f}%")
+        return [("class:title", "  " + "  |  ".join(parts))]
 
     def _render_side(self):
         state = "运行中" if self._busy else "空闲"
-        art = {
-            "idle": ["  ( ◡ )  ", "  ╭───╮  ", "  ╰───╯  "],
-            "thinking": ["  ? ⠋    ", "  ( ◠ ◠ ) ", "  ╭───╮  "],
-            "working": ["  ( • • ) ", " ╭───╮   ", "  ╰───╯ ↑"],
-            "alert": ["  ! @ • ! ", "  ╭───╮  ", "  ⚠ 拦截  "],
-            "done": ["  ✦ ^ ^ ✦ ", "  ╭───╮  ", "  ╰───╯  "],
-        }.get(self._mascot_state, ["  ( ◡ )  ", "  ╭───╮  ", "  ╰───╯  "])
-        # working 状态用上下两组身体帧模拟跳动，其余状态用定时换帧增强生命感。
+        self._mascot.set(self._mascot_state)
+        art = self._mascot.ascii(self._mascot_frame, color=False)
+        # working 状态用额外帧制造弹跳；其它状态仍由 Mascot 帧驱动表情变化。
         if self._mascot_state == "working" and self._mascot_frame % 2:
-            art = [art[0], "  ╭───╮ ↑", "  ╰───╯  "]
-        return [("class:panel", "\n".join(art) + "\n\n"), ("", f"状态 {state}\n"),
-            ("", f"事件 {len(self._events)}\n"), ("", "输入区已聚焦\n"),
-            ("", "Ctrl+C 取消\nCtrl+Q 退出")]
+            art = art.replace("╭─────╮", "╭─────╮ ↑", 1)
+        focus = ["●", "○", "○"][self._focus_index] if hasattr(self, "_focus_index") else "○"
+        lines = [("class:panel", art + "\n\n"), ("", f"状态 {state}\n"),
+                 ("", f"事件 {len(self._events)}\n"), ("", f"焦点 {focus}\n")]
+        if self._plan_mode:
+            lines.append(("class:panel", "模式 PLAN (只读)\n"))
+        if self._context_pct is not None:
+            bar = context_bar(self._context_pct)
+            style = "context-" + context_style(self._context_pct)
+            lines.append(("class:panel", f"上下文 {self._context_pct:.0f}% [{bar}]\n"))
+            if self._context_info:
+                est = self._context_info["estimated_tokens"]
+                budget = self._context_info["budget_tokens"]
+                lines.append(("", f"tok {est:,} / {budget:,}\n"))
+        lines.append(("", "Tab 切换 · Ctrl+J 提交\nCtrl+C 取消 · Ctrl+Q 退出"))
+        return lines
 
     def _render_events(self):
         return "\n".join(self._events) or "等待任务输入…"

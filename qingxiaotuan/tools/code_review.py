@@ -329,7 +329,7 @@ class CodeReviewPlugin(_Plugin):
                 },
                 "required": [],
             },
-            handler=code_review, group="code",
+            handler=code_review, group="code", read_only=True,
         ))
         registry.register(Tool(
             name="code_review_quick",
@@ -341,5 +341,5 @@ class CodeReviewPlugin(_Plugin):
                 },
                 "required": ["file_path"],
             },
-            handler=code_review_quick, group="code",
+            handler=code_review_quick, group="code", read_only=True,
         ))

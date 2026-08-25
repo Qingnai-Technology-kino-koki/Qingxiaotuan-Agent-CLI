@@ -16,7 +16,7 @@ from qingxiaotuan.tools.external import ExternalToolsPlugin
 from qingxiaotuan.tools.shell import ShellPlugin, _pre_exec_guard, YOLO_REDLINE
 from qingxiaotuan.tools.base import ToolContext
 
-AVAIL = set(ExternalEngineManager({}).available())
+AVAIL = set(ExternalEngineManager().list_engines())
 HAVE_SAFETY = "safety" in AVAIL
 
 

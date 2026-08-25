@@ -55,7 +55,7 @@ class MemoryToolPlugin(Plugin):
                 },
                 "required": ["key", "value"],
             },
-            handler=memory_update_user, group="memory",
+            handler=memory_update_user, group="memory", read_only=True,
         ))
         registry.register(Tool(
             name="memory_search",
@@ -68,5 +68,5 @@ class MemoryToolPlugin(Plugin):
                 },
                 "required": ["query"],
             },
-            handler=memory_search, group="memory",
+            handler=memory_search, group="memory", read_only=True,
         ))

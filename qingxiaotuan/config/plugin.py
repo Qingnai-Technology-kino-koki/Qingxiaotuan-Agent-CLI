@@ -10,9 +10,9 @@ class ConfigPlugin(Plugin):
     name = "config"
     provides = ["config"]
 
-    def __init__(self, config: Config) -> None:
+    def __init__(self, config: Config = None) -> None:
         super().__init__()
-        self.config = config
+        self.config = config or Config()
 
     def activate(self, kernel: Kernel) -> None:
         kernel.provide("config", self.config, owner=self.name)

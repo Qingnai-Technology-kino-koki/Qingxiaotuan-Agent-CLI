@@ -11,7 +11,7 @@ import sys
 import time
 from pathlib import Path
 
-from .background_store import BackgroundStore
+from .background_store import BackgroundStore, kill_process_tree
 from .agent import Agent
 from .markers import is_done
 from ..config.loader import Config, load_dotenv
@@ -33,6 +33,18 @@ def run(job_id: str, home: Path) -> int:
     session.append("session.meta", {"kind": "background", "job_id": job_id,
                                      "task": job["task"], "started_at": job["started_at"]})
     session.append("job.start", {"job_id": job_id, "task": job["task"]})
+
+    def _cancel_and_exit() -> int:
+        # 防御性: 清理本进程可能残留的子进程树 (工具调用产生的 shell/node 等)。
+        try:
+            kill_process_tree(os.getpid())
+        except OSError:
+            pass
+        session.append("job.cancel", {"job_id": job_id})
+        turns = agent.turn_count if "agent" in dir() else 0
+        store.update(job_id, status="cancelled", heartbeat=time.time(), turns=turns)
+        return 0
+
     try:
         load_dotenv(home)
         kernel = build_kernel(profile=job.get("profile", "default"))
@@ -46,15 +58,19 @@ def run(job_id: str, home: Path) -> int:
         for index in range(1, max_turns + 1):
             current = store.get(job_id)
             if current is None or current.get("status") == "cancel_requested":
-                session.append("job.cancel", {"job_id": job_id})
-                store.update(job_id, status="cancelled", heartbeat=time.time(), turns=agent.turn_count)
-                return 0
+                return _cancel_and_exit()
             prompt = job["task"] if index == 1 else (
                 f"[继续] 上一轮结果:\n{last[:1500]}\n\n请继续推进任务，直到完成。"
             )
             last = agent.run(prompt, stream=False) or ""
             store.update(job_id, heartbeat=time.time(), turns=agent.turn_count, result=last[:4000])
             session.append("agent.turn", {"turn": agent.turn_count, "summary": last[:500]})
+            if last.startswith("[模型错误]"):
+                # 模型调用持续失败 (已重试): 快速失败, 不再空转消耗轮次
+                error = last[:500]
+                store.update(job_id, status="failed", error=error, heartbeat=time.time())
+                session.append("job.error", {"job_id": job_id, "error": error})
+                return 1
             if is_done(last):
                 store.update(job_id, status="done", result=last, heartbeat=time.time())
                 session.append("job.done", {"job_id": job_id, "turns": agent.turn_count})

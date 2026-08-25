@@ -82,6 +82,18 @@ class ContextManager:
             current = compacted
         return current, total_dropped
 
+    def compact_force(self, messages: List[Dict[str, Any]]) -> tuple[List[Dict[str, Any]], int]:
+        """强制压缩 (对标 Claude Code /compact): 忽略预算阈值, 折叠中间历史直到无法再压缩。"""
+        total_dropped = 0
+        current = messages
+        for _ in range(5):
+            compacted, dropped = self._compact_once(current)
+            total_dropped += dropped
+            if compacted is current:  # 已无法继续压缩
+                break
+            current = compacted
+        return current, total_dropped
+
     def _compact_once(self, messages: List[Dict[str, Any]]) -> tuple[List[Dict[str, Any]], int]:
         """单次压缩 (不动 system 前缀)。"""
         # 系统提示必须唯一且置首

@@ -157,7 +157,7 @@ class Mascot:
 
     def _ascii_done(self, f: int) -> str:
         c = _PALETTE[DONE]["body"]
-        spark = "✨" if f % 2 == 0 else "  "
+        spark = "✦" if f % 2 == 0 else "  "
         body = f"  {spark}\n" \
                f"  ( ^ ^ )\n" \
                f"  ╭─────╮\n" \

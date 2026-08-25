@@ -9,10 +9,16 @@ from __future__ import annotations
 import copy
 import json
 import os
+import sys
 from pathlib import Path
 from typing import Any, Dict, Optional
 
-import yaml
+# 优先尝试导入 PyYAML; 若不可用 (隔离环境/未安装), 降级为内置极简解析器
+_yaml = None
+try:
+    import yaml as _yaml
+except ImportError:
+    _yaml = None
 
 from .defaults import DEFAULT_CONFIG, PRESET_PROFILES, load_builtin_soul
 
@@ -76,12 +82,75 @@ def patch_replace(base: Dict[str, Any], patch: Dict[str, Any], _prefix: str = ""
     return out
 
 
+def _chmod_600(path: Path) -> None:
+    """把文件权限设为 600 (仅所有者可读写), 用于保存密钥相关文件。"""
+    try:
+        if os.name == "nt":
+            # Windows 上 chmod 效果有限, 用 attrib 隐藏保护
+            import subprocess
+            subprocess.run(["attrib", "+H", str(path)], capture_output=True, timeout=5)
+        else:
+            os.chmod(path, 0o600)
+    except Exception:
+        pass
+
+
+# ---- 极简 YAML 子集解析器 (PyYAML 不可用时的降级) ----
+def _mini_yaml_load(text: str) -> Dict[str, Any]:
+    """极简 YAML 解析: 仅支持 键: 值 的简单扁平结构 (嵌套忽略, 用于降级)。"""
+    result: Dict[str, Any] = {}
+    for line in text.splitlines():
+        line = line.strip()
+        if not line or line.startswith("#") or ":" not in line:
+            continue
+        key, _, val = line.partition(":")
+        key = key.strip()
+        val = val.strip()
+        if val.startswith("[") and val.endswith("]"):
+            inner = val[1:-1].strip()
+            result[key] = [x.strip().strip('"').strip("'") for x in inner.split(",") if x.strip()]
+        elif val.lower() in ("true", "false"):
+            result[key] = val.lower() == "true"
+        elif val.lower() in ("null", "none", "~"):
+            result[key] = None
+        else:
+            try:
+                result[key] = int(val)
+            except ValueError:
+                try:
+                    result[key] = float(val)
+                except ValueError:
+                    result[key] = val.strip('"').strip("'")
+    return result
+
+
 def _load_yaml(path: Path) -> Dict[str, Any]:
     if not path.exists():
         return {}
-    with open(path, "r", encoding="utf-8") as f:
-        data = yaml.safe_load(f)
-    return data or {}
+    try:
+        with open(path, "r", encoding="utf-8") as f:
+            text = f.read()
+        if _yaml is not None:
+            data = _yaml.safe_load(text)
+        else:
+            data = _mini_yaml_load(text)
+        return data or {}
+    except Exception:
+        return {}
+
+
+def dump_yaml(data: Dict[str, Any], path: Path) -> None:
+    """写入 YAML 配置。"""
+    path.parent.mkdir(parents=True, exist_ok=True)
+    try:
+        if _yaml is not None:
+            with open(path, "w", encoding="utf-8") as f:
+                _yaml.safe_dump(data, f, allow_unicode=True, sort_keys=False)
+        else:
+            with open(path, "w", encoding="utf-8") as f:
+                json.dump(data, f, ensure_ascii=False, indent=2)
+    except Exception:
+        pass
 
 
 class Config:
@@ -123,25 +192,13 @@ class Config:
             node = node.setdefault(k, {})
         node[keys[-1]] = value
         self.home.mkdir(parents=True, exist_ok=True)
-        with open(self.user_config_path, "w", encoding="utf-8") as f:
-            yaml.safe_dump(cfg, f, allow_unicode=True, sort_keys=False)
+        dump_yaml(cfg, self.user_config_path)
         # 同步内存视图: 用 patch_replace 整值替换目标键 (保留同级默认字段)。
-        # 整值替换确保嵌套配置 (如 model.planner) 改写时不会与内存残留旧子字段深合并,
-        # 同时又不丢同级的 model.provider 等默认项。
         self.data = patch_replace(self.data, {dotted: value})
 
     @staticmethod
     def _coerce(value: Any) -> Any:
-        """尽力把用户/CLI 传入的字符串值转为 int/float/bool/JSON/原值。
-
-        支持:
-        - 布尔: true/false
-        - 空值: null/none/~
-        - 整数 / 浮点
-        - JSON 字符串 (dict/list): 例如 '{"provider":"opencode-zen"}' 会解析为对象,
-          使 `qxt config set model.worker '{"provider":"opencode-zen"}'` 可用
-        - 其他: 原样字符串
-        """
+        """尽力把用户/CLI 传入的字符串值转为 int/float/bool/JSON/原值。"""
         if not isinstance(value, str):
             return value
         low = value.strip().lower()
@@ -157,7 +214,6 @@ class Config:
             return float(value)
         except ValueError:
             pass
-        # 尝试 JSON (支持嵌套 dict/list 配置, 如 model.worker)
         s = value.strip()
         if s and s[0] in ("{", "["):
             try:
@@ -167,19 +223,14 @@ class Config:
         return value
 
     def api_key(self) -> Optional[str]:
-        """按优先级解析密钥: 专用 env 名 -> 通用 QXT_API_KEY -> 用户配置中的引用。
-
-        注意: 密钥永远从环境变量读取, 不写入 config.yaml 明文。
-        """
+        """按优先级解析密钥: 专用 env 名 -> 通用 QXT_API_KEY -> 用户配置中的引用。"""
         env_name = self.get("model.api_key_env", "DEEPSEEK_API_KEY")
         key = os.environ.get(env_name)
         if key:
             return key
-        # 兼容历史/通用变量
         key = os.environ.get("QXT_API_KEY")
         if key:
             return key
-        # 允许 config 中以 ${ENV_VAR} 形式引用 (仅当配置了 api_key_ref)
         ref = self.get("model.api_key_ref")
         if ref:
             return os.environ.get(ref)
@@ -195,11 +246,8 @@ class Config:
             )
         return key
 
-    # ------------------------------------------------------------ 运行模式
-
     @property
     def mode(self) -> str:
-        """当前运行模式: standard 或 yolo。"""
         return self.get("mode.default", "standard")
 
     @mode.setter
@@ -212,27 +260,19 @@ class Config:
         return self.mode == "yolo"
 
     def tool_auto_approve(self, tool_name: str) -> bool:
-        """判断某危险工具是否应自动批准 (无需询问用户)。
-
-        - standard 模式: 永远不自动批准, 交给 confirm 回调处理。
-        - yolo 模式: 默认全部自动批准, 除非该工具在 mode.yolo_require_confirm 红名单中。
-        """
         if not self.is_yolo():
             return False
         redlist = self.get("mode.yolo_require_confirm", []) or []
         return tool_name not in redlist
 
-    # ------------------------------------------------------------ 初始化
-
     def ensure_home(self) -> None:
         """创建 ~/.qingxiaotuan 目录骨架 (Hermes 风格)。"""
         for sub in ["memories", "skills", "sessions", "logs", "cron", "profiles", "history"]:
             (self.home / sub).mkdir(parents=True, exist_ok=True)
-        # .env 默认不存在则创建一个空文件并锁权限 (仅本人可读写)
         env_file = self.home / ".env"
         if not env_file.exists():
             env_file.write_text("# 密钥集中在此, 不要提交到版本库\n", encoding="utf-8")
-            _chmod_600(env_file)
+        _chmod_600(env_file)
         soul = self.home / "SOUL.md"
         if not soul.exists():
             soul.write_text(load_builtin_soul(), encoding="utf-8")
@@ -243,16 +283,5 @@ class Config:
         if not user.exists():
             user.write_text("# USER.md - 关于用户\n\n- Name:\n- City:\n- Notes:\n", encoding="utf-8")
 
-
-def dump_yaml(data: Dict[str, Any]) -> str:
-    return yaml.safe_dump(data, allow_unicode=True, sort_keys=False)
-
-
-def _chmod_600(path: Path) -> None:
-    """在 POSIX 上把文件权限设为 600 (仅属主可读写)。Windows 忽略。"""
-    if os.name != "posix":
-        return
-    try:
-        os.chmod(path, 0o600)
-    except OSError:
-        pass
+    def raw(self) -> dict:
+        return self.data

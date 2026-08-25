@@ -4,8 +4,8 @@ build-backend = "setuptools.build_meta"
 
 [project]
 name = "qingxiaotuan"
-version = "0.1.0"
-description = "青小团 CLI - 融合 DeepSeek Harness 插件化理念与 Hermes Agent 自进化理念的独立 Agent CLI"
+version = "0.2.0"
+description = "青小团 CLI - 融合 DeepSeek Harness 插件化理念与 Hermes Agent 自进化理念的独立 Agent CLI (纯 Python 全栈)"
 readme = "README.md"
 requires-python = ">=3.11"
 license = { text = "MIT" }
@@ -18,7 +18,10 @@ dependencies = [
 ]
 
 [project.optional-dependencies]
-dev = ["pytest>=8.0"]
+dev = [
+    "pytest>=8.0",
+    "pytest-asyncio>=0.23",
+]
 
 [project.scripts]
 qxt = "qingxiaotuan.cli:main"

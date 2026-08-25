@@ -58,6 +58,7 @@ class ToolContext:
     permissions: Optional[PermissionPolicy] = None
     safety_advice: Optional[str] = None                      # 执行前安全护栏给出的风险提示 (供确认环节展示)
     ui: Optional[Any] = None                                 # 可选 UI 句柄 (用于吉祥物状态切换等)
+    plan_mode: bool = False                                  # Plan 模式: 只读, 禁止修改类工具
 
     def config(self, dotted: str, default: Any = None) -> Any:
         cfg = self.kernel.get("config")
@@ -82,6 +83,7 @@ class Tool:
     yolo_confirm: bool = False                     # YOLO 模式下仍强制确认 (最后红线)
     group: str = "general"
     long_running: bool = False                     # 长时间运行的工具 (需要进度心跳)
+    read_only: bool = False                        # 只读工具 (Plan 模式放行, 不修改任何状态)
 
     def schema(self) -> Dict[str, Any]:
         return {
@@ -130,6 +132,14 @@ class ToolRegistry:
             args = json.loads(arguments_json) if arguments_json else {}
         except json.JSONDecodeError as exc:
             return ToolResult(status="error", content=f"[错误] 工具参数不是合法 JSON: {exc}", tool_name=name)
+        # Plan 模式: 只读放行, 修改类工具一律拦截 (对标 Claude Code 的 Plan Mode)
+        if getattr(ctx, "plan_mode", False) and not tool.read_only:
+            return ToolResult(
+                status="denied",
+                content=f"[Plan 模式] 只读模式已启用, 已阻止修改操作 {name}。"
+                        "请先输出分析与实施计划, 退出 Plan 模式后再执行修改。",
+                tool_name=name,
+            )
         cfg = ctx.kernel.get("config") if ctx.kernel is not None else None
         policy = ctx.permissions or PermissionPolicy(cfg)
         decision = policy.decide(tool, args, yolo=getattr(ctx, "yolo", False))

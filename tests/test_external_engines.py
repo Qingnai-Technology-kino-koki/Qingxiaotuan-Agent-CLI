@@ -5,10 +5,11 @@
 """
 
 import json
+import threading
 
 import pytest
 
-from qingxiaotuan.core.ipc_client import ExternalEngineManager
+from qingxiaotuan.core.ipc_client import ExternalEngineManager, IpcClient
 from qingxiaotuan.core.kernel import Kernel
 from qingxiaotuan.tools import ToolRegistryPlugin, builtin_tool_plugins
 from qingxiaotuan.tools.base import ToolContext
@@ -32,7 +33,7 @@ def _ctx(k, tmp_path):
 
 def _avail():
     try:
-        return set(ExternalEngineManager({}).available())
+        return set(ExternalEngineManager().list_engines())
     except Exception:
         return set()
 
@@ -49,7 +50,7 @@ HAVE_RULES = "rules" in AVAIL
 
 def test_manager_discovers_engines():
     m = ExternalEngineManager({})
-    avail = m.available()
+    avail = m.list_engines()
     assert isinstance(avail, list)
     assert "diff" not in avail or "diff" in avail  # 始终成立, 仅确认不抛异常
 
@@ -68,6 +69,19 @@ def test_ext_diff_detects_change(tmp_path):
     out = k.require("tool_registry").dispatch("ext_diff", json.dumps(
         {"old": "line1\nline2\n", "new": "line1\nCHANGED\n"}), _ctx(k, tmp_path))
     assert "CHANGED" in out and "line2" in out
+
+
+@pytest.mark.skipif(not HAVE_DIFF, reason="未编译 qxt_diff")
+def test_ipc_client_close_reclaims_read_thread(tmp_path):
+    """IpcClient.close() 必须终止子进程并回收 _read_loop 线程 (防跨测试泄漏)。"""
+    client = IpcClient("diff")
+    client.start()
+    thread = client._read_thread
+    assert thread is not None and thread.is_alive()
+    client.close()
+    thread.join(timeout=5)
+    assert not thread.is_alive()
+    assert client.proc is None
 
 
 @pytest.mark.skipif(not HAVE_DIFF, reason="未编译 qxt_diff")
