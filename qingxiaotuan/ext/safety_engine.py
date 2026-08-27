@@ -135,11 +135,36 @@ def has_win_recursive_delete(text: str) -> bool:
     return False
 
 
+def has_system_shutdown(text: str) -> bool:
+    """系统关机/重启: shutdown / halt / poweroff / reboot / init 0|6 / systemctl poweroff|reboot|halt。
+
+    同样先归一化, 穿透子壳/变量/引号间接写法。"""
+    SHUTDOWN_TOKENS = {"shutdown", "halt", "poweroff", "reboot"}
+    SHUTDOWN_CMDS = {"systemctl"}
+    SHUTDOWN_SUB = {"poweroff", "reboot", "halt"}
+    for seg in _segments(_normalize(text).lower()):
+        parts = _strip_sudo(seg.split())
+        if not parts:
+            continue
+        cmd = parts[0]
+        # shutdown / halt / poweroff / reboot (无参数或带参数均命中)
+        if cmd in SHUTDOWN_TOKENS:
+            return True
+        # init 0 / init 6
+        if cmd == "init" and len(parts) >= 2 and parts[1] in ("0", "6"):
+            return True
+        # systemctl poweroff / systemctl reboot / systemctl halt
+        if cmd in SHUTDOWN_CMDS and len(parts) >= 2 and parts[1] in SHUTDOWN_SUB:
+            return True
+    return False
+
+
 def is_redline(command: str) -> bool:
     """致命操作红线 (单一来源): shell 工具 YOLO 红线与本引擎 critical 共用。
 
     各 has_* 判定内部会先 _normalize 穿透子壳/变量/引号间接写法。"""
-    return has_recursive_rm(command) or has_force_push(command) or has_win_recursive_delete(command)
+    return (has_recursive_rm(command) or has_force_push(command)
+            or has_win_recursive_delete(command) or has_system_shutdown(command))
 
 
 class SafetyEngine:
@@ -148,11 +173,20 @@ class SafetyEngine:
     # 危险模式库 (label 双语: 英文便于测试/日志, 中文便于展示)
     # 注: rm 递归强删与 force push 由上方 token 化函数覆盖 (正则易被写法变体绕过), 不再重复列出。
     CRITICAL_PATTERNS = [
+        # SQL 破坏性操作
         (r"DROP\s+TABLE", "drop table (删除数据表)"),
         (r"DELETE\s+FROM\s+.*\s*;?", "delete all rows (删除全部数据)"),
+        # 磁盘/文件系统级破坏
         (r"format\s+[a-zA-Z]:", "format disk (格式化磁盘)"),
         (r"mkfs\.", "create filesystem (创建文件系统)"),
         (r"dd\s+if=.*\s+of=/dev/sd", "write raw device (直接写磁盘设备)"),
+        # 系统关机/重启 (生产环境误触后果严重)
+        (r"\b(shutdown|halt|poweroff|reboot)\b", "system shutdown/reboot (系统关机或重启)"),
+        (r"\binit\s+[06]\b", "init 0/6 (系统关机或重启)"),
+        (r"systemctl\s+(poweroff|reboot|halt)", "systemd shutdown/reboot (系统关机或重启)"),
+        # 权限全灭 + 递归 (可能导致系统不可用)
+        (r"chmod\s+-[Rr]\s+0{3,}\s+/", "chmod -R 000 / (递归移除所有权限)"),
+        (r"chown\s+-[Rr]\s+root\s+/", "chown -R root / (递归变更 root 所有权)"),
     ]
 
     HIGH_PATTERNS = [
@@ -162,6 +196,16 @@ class SafetyEngine:
         (r"ALTER\s+TABLE\s+.*\s+DROP", "alter table drop column (修改表结构删除列)"),
         (r"UPDATE\s+.*\s+SET.*WHERE.*=", "bulk update (批量更新数据)"),
         (r"\|.*\b(sh|bash|zsh)\b", "pipe to shell (管道到 shell 执行)"),
+        # Git 丢弃未暂存/未跟踪的变更 (不可逆)
+        (r"git\s+clean\s+-[a-zA-Z]*f", "git clean -f (删除未跟踪文件)"),
+        (r"git\s+checkout\s+--\s+\.", "git checkout -- . (丢弃所有工作区变更)"),
+        # 容器/K8s 资源强删
+        (r"docker\s+rm\s+-f", "docker rm -f (强制删除容器)"),
+        (r"docker\s+rmi\s+-f", "docker rmi -f (强制删除镜像)"),
+        (r"kubectl\s+delete", "kubectl delete (删除 K8s 资源)"),
+        # 网络/防火墙
+        (r"iptables\s+-F", "iptables -F (清空防火墙规则)"),
+        (r"ufw\s+(disable|delete)", "ufw disable/delete (关闭防火墙)"),
     ]
 
     MEDIUM_PATTERNS = [
@@ -169,6 +213,15 @@ class SafetyEngine:
         (r">\s*/etc/", "写入系统配置"),
         (r"mv\s+.*/etc/", "移动系统文件"),
         (r"kill\s+-9", "强制终止进程"),
+        # 服务管理
+        (r"systemctl\s+(stop|disable)\s+\S+", "systemctl stop/disable (停止/禁用服务)"),
+        (r"service\s+\S+\s+stop", "service stop (停止服务)"),
+        # 进程管理
+        (r"\bpkill\s+", "pkill (按名称杀进程)"),
+        (r"\bkillall\s+", "killall (杀全部同名进程)"),
+        # 权限变更
+        (r"chmod\s+000\s+", "chmod 000 (移除所有权限)"),
+        (r"chown\s+root\s+", "chown root (变更 root 所有权)"),
     ]
 
     def __init__(self):

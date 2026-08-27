@@ -1,6 +1,15 @@
 # Context Summary
 
-更新时间：2026-08-26 (最新)
+更新时间：2026-08-27 (最新)
+
+## 第十三轮: Safety 引擎模式扩充 + PyPI 发布准备 + 推广文案
+
+- **Safety 引擎模式扩充** (`ext/safety_engine.py`): CRITICAL 新增 6 项 — 系统关机/重启 (`shutdown/halt/poweroff/reboot/init 0|6/systemctl poweroff|reboot|halt`)、递归权限全灭 (`chmod -R 000+/`)、递归 root 所有权 (`chown -R root /`); HIGH 新增 6 项 — `git clean -f`、`git checkout -- .`、`docker rm -f`、`docker rmi -f`、`kubectl delete`、`iptables -F`/`ufw disable`; MEDIUM 新增 5 项 — `systemctl stop/disable`、`service stop`、`pkill`、`killall`、`chmod 000`、`chown root`。
+- **`is_redline` 红线扩展**: 新增 `has_system_shutdown()` 函数, 覆盖 shutdown/halt/poweroff/reboot/init 0|6/systemctl poweroff|reboot|halt — YOLO 模式下也硬拦截, 穿透子壳/变量/引号间接写法。
+- **测试**: `tests/test_shell_safety_guard.py` 新增 13 项 (shutdown/reboot 集合、chmod -R 000 变体、docker rm/rmi、git clean/checkout、kubectl delete、iptables -F、systemctl stop、pkill/killall、chmod 000、归一化穿透 shutdown 间接写法); 全 30 项通过。
+- **PyPI 发布配置** (`pyproject.toml`): 新增 `keywords`(11 个 SEO 关键词)、`classifiers`(PyPI 分类)、`project.urls`(首页/仓库/Changelog/Bug Tracker)、英文 `description`; 新建 `MANIFEST.in` 确保 sdist 打包 LICENSE/README/resources; 新建 `.github/workflows/publish.yml` (tag push 自动发布到 PyPI, trusted publishing)。
+- **推广文案** (`outputs/promotional_posts.md`): 3 篇帖子 — Hacker News Show HN (技术极客风, 突出 safety engine token 穿透)、Reddit r/Python (社区友好, 功能列表 + 架构说明)、V2EX (中文开发者社区, 对比差异化)。
+- **验收**: safety 引擎测试 30/30 通过; 关联测试 (safety_selfimprove + cold_engines + auto_route + parser + kernel) 64/64 通过。
 
 ## 第十二轮: 代码卫生 + 客户端限流 + 测试补齐
 

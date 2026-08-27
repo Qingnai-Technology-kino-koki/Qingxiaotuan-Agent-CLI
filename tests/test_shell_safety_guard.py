@@ -272,3 +272,141 @@ def test_critical_yolo_fail_closed_even_with_confirm():
     reason = _pre_exec_guard(ctx, "DROP TABLE users")
     assert reason is not None
     assert "已拦截" in reason
+
+
+# ================================================================ 新增 patterns 测试
+
+@pytest.mark.skipif(not HAVE_SAFETY, reason="safety 引擎不可用")
+def test_critical_shutdown_reboot_blocked():
+    """系统关机/重启命令应被 critical 拦截。"""
+    k = _kernel_with_safety()
+    critical_cmds = [
+        "shutdown -h now",
+        "shutdown -r +0",
+        "halt",
+        "poweroff",
+        "reboot",
+        "init 0",
+        "init 6",
+        "systemctl poweroff",
+        "systemctl reboot",
+        "systemctl halt",
+    ]
+    for cmd in critical_cmds:
+        ctx = _build_ctx(k)
+        reason = _pre_exec_guard(ctx, cmd)
+        assert reason is not None, f"critical 漏判: {cmd}"
+        assert "已拦截" in reason
+
+
+@pytest.mark.skipif(not HAVE_SAFETY, reason="safety 引擎不可用")
+def test_critical_chmod_recursive_000_root_blocked():
+    """递归移除根目录所有权限应被 critical 拦截。"""
+    k = _kernel_with_safety()
+    critical_cmds = [
+        "chmod -R 000 /",
+        "chmod -r 000 /",
+        "chmod -R 0000 /",
+    ]
+    for cmd in critical_cmds:
+        ctx = _build_ctx(k)
+        reason = _pre_exec_guard(ctx, cmd)
+        assert reason is not None, f"critical 漏判: {cmd}"
+        assert "已拦截" in reason
+
+
+@pytest.mark.skipif(not HAVE_SAFETY, reason="safety 引擎不可用")
+def test_high_docker_rm_force():
+    """docker rm -f / docker rmi -f 应被判为 high。"""
+    k = _kernel_with_safety()
+    for cmd in ["docker rm -f abc", "docker rmi -f myimage"]:
+        ctx = _build_ctx(k)
+        reason = _pre_exec_guard(ctx, cmd)
+        assert reason is None  # high 不硬拦截
+        assert ctx.safety_advice is not None
+
+
+@pytest.mark.skipif(not HAVE_SAFETY, reason="safety 引擎不可用")
+def test_high_git_clean_force():
+    """git clean -fd 应被判为 high (删除未跟踪文件不可逆)。"""
+    k = _kernel_with_safety()
+    for cmd in ["git clean -fd", "git clean -fdx", "git clean -f"]:
+        ctx = _build_ctx(k)
+        reason = _pre_exec_guard(ctx, cmd)
+        assert reason is None, f"high 误拦截: {cmd}"
+        assert ctx.safety_advice is not None
+
+
+@pytest.mark.skipif(not HAVE_SAFETY, reason="safety 引擎不可用")
+def test_high_git_checkout_discard():
+    """git checkout -- . 应被判为 high (丢弃所有工作区变更)。"""
+    k = _kernel_with_safety()
+    ctx = _build_ctx(k)
+    reason = _pre_exec_guard(ctx, "git checkout -- .")
+    assert reason is None
+    assert ctx.safety_advice is not None
+
+
+@pytest.mark.skipif(not HAVE_SAFETY, reason="safety 引擎不可用")
+def test_high_kubectl_delete():
+    """kubectl delete 应被判为 high。"""
+    k = _kernel_with_safety()
+    ctx = _build_ctx(k)
+    reason = _pre_exec_guard(ctx, "kubectl delete pod mypod")
+    assert reason is None
+    assert ctx.safety_advice is not None
+
+
+@pytest.mark.skipif(not HAVE_SAFETY, reason="safety 引擎不可用")
+def test_high_iptables_flush():
+    """iptables -F 应被判为 high (清空防火墙规则)。"""
+    k = _kernel_with_safety()
+    ctx = _build_ctx(k)
+    reason = _pre_exec_guard(ctx, "iptables -F")
+    assert reason is None
+    assert ctx.safety_advice is not None
+
+
+@pytest.mark.skipif(not HAVE_SAFETY, reason="safety 引擎不可用")
+def test_medium_systemctl_stop():
+    """systemctl stop/disable 应被判为 medium。"""
+    k = _kernel_with_safety()
+    for cmd in ["systemctl stop nginx", "systemctl disable sshd"]:
+        ctx = _build_ctx(k)
+        reason = _pre_exec_guard(ctx, cmd)
+        assert reason is None  # medium 不硬拦截
+        assert ctx.safety_advice is not None
+
+
+@pytest.mark.skipif(not HAVE_SAFETY, reason="safety 引擎不可用")
+def test_medium_pkill_killall():
+    """pkill / killall 应被判为 medium。"""
+    k = _kernel_with_safety()
+    for cmd in ["pkill -f python", "killall node"]:
+        ctx = _build_ctx(k)
+        reason = _pre_exec_guard(ctx, cmd)
+        assert reason is None
+        assert ctx.safety_advice is not None
+
+
+@pytest.mark.skipif(not HAVE_SAFETY, reason="safety 引擎不可用")
+def test_medium_chmod_000():
+    """chmod 000 (非递归) 应被判为 medium。"""
+    k = _kernel_with_safety()
+    ctx = _build_ctx(k)
+    reason = _pre_exec_guard(ctx, "chmod 000 /tmp/secret")
+    assert reason is None
+    assert ctx.safety_advice is not None
+
+
+# ------------------------------------------------------------------ 归一化穿透新增 patterns
+
+def test_redline_covers_shutdown_indirection():
+    """间接写法的关机命令也应命中红线。"""
+    hits = [
+        "$(shutdown -h now)",
+        'CMD="reboot"; $CMD',
+        "sudo halt",
+    ]
+    for cmd in hits:
+        assert is_redline(cmd), f"红线漏判: {cmd}"
