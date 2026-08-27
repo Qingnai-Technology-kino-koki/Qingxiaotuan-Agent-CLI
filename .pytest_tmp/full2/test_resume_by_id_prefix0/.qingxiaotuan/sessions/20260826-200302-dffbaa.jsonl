@@ -1,0 +1,5 @@
+{"ts": 1787745782.3214526, "type": "session.meta", "task": "你好"}
+{"ts": 1787745782.3266413, "type": "user", "message": {"role": "user", "content": "你好"}}
+{"ts": 1787745782.331833, "type": "assistant", "message": {"role": "assistant", "content": "收到, 我来处理。"}}
+{"ts": 1787745782.3363426, "type": "tool_call", "name": "read_file", "arguments": "{}"}
+{"ts": 1787745782.341902, "type": "tool", "message": {"role": "tool", "tool_call_id": "c1", "name": "read_file", "content": "file content"}, "name": "read_file", "content": "file content"}

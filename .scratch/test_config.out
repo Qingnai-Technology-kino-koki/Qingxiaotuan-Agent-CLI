@@ -1,0 +1,11 @@
+........F                                                                [100%]
+================================== FAILURES ===================================
+E   AssertionError: assert False
+     +  where False = exists()
+     +    where exists = (WindowsPath('E:/Qingxiaotuan Agent CLI/.scratch/ptmp/test_ensure_home_creates_herme0/.qingxiaotuan') / 'SOUL.md').exists
+E:\Qingxiaotuan Agent CLI\tests\test_config.py:78: AssertionError: assert False
+=========================== short test summary info ===========================
+FAILED tests/test_config.py::test_ensure_home_creates_hermes_layout - AssertionError: assert False
+ +  where False = exists()
+ +    where exists = (WindowsPath('E:/Qingxiaotuan Agent CLI/.scratch/ptmp/test_ensure_home_creates_herme0/.qingxiaotuan') / 'SOUL.md').exists
+1 failed, 8 passed in 0.24s

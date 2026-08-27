@@ -1,0 +1,16 @@
+{
+  "job_id": "bg-w1",
+  "task": "task",
+  "workspace": "E:\\Qingxiaotuan Agent CLI\\.pytest_tmp\\r13\\test_worker_honors_cancel_requ0",
+  "profile": "default",
+  "status": "cancelled",
+  "pid": null,
+  "started_at": 1787739777.6691468,
+  "updated_at": 1787739777.7023308,
+  "heartbeat": 1787739777.6691468,
+  "turns": 0,
+  "result": "",
+  "error": null,
+  "session_file": null,
+  "yolo": false
+}

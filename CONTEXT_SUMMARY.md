@@ -11,6 +11,12 @@
 - **推广文案** (`outputs/promotional_posts.md`): 3 篇帖子 — Hacker News Show HN (技术极客风, 突出 safety engine token 穿透)、Reddit r/Python (社区友好, 功能列表 + 架构说明)、V2EX (中文开发者社区, 对比差异化)。
 - **验收**: safety 引擎测试 30/30 通过; 关联测试 (safety_selfimprove + cold_engines + auto_route + parser + kernel) 64/64 通过。
 
+### 后续补充 (同轮)
+
+- **`/impact` 增强** (`cli/commands.py`): 新增文件类型分布 (按扩展名统计 + 柱状图)、工具使用分布 (按工具名统计 + 柱状图)、可视化影响半径报告。
+- **`/log` 新命令** (`cli/commands.py`): 展示最近 N 条工具调用历史 (默认 15), 从 session 事件流读取 `tool_call` 事件, 显示时间戳/工具名/参数摘要; `_HELP` 已同步。
+- **验收**: 全部 42 项通过 (shell_safety_guard 30 + auto_route 7 + kernel 5)。
+
 ## 第十二轮: 代码卫生 + 客户端限流 + 测试补齐
 
 - **代码卫生** (`core/agent.py` / `cli/commands.py` / `ext/skill_market_engine.py`): 删除未使用导入 (`system_prompt_hash`/`PARALLEL_SAFE_TOOLS`); 配置目录引用统一走 `home_dir()` (尊重 `QXT_HOME`) — `cli/commands.py` 硬编码 `~/.qingxiaotuan` 与技能市场目录均改为优先 `QXT_HOME`。

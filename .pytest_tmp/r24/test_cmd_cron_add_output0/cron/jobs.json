@@ -1,0 +1,11 @@
+[
+  {
+    "id": "b8d9a8c9",
+    "name": "落盘任务",
+    "prompt": "prompt",
+    "interval_minutes": 5,
+    "last_run": 0,
+    "enabled": true,
+    "output": "E:\\Qingxiaotuan Agent CLI\\.pytest_tmp\\r24\\test_cmd_cron_add_output0\\out\\result.md"
+  }
+]

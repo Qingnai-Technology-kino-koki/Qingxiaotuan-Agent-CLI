@@ -1,0 +1,16 @@
+{
+  "job_id": "bg-x2",
+  "task": "task",
+  "workspace": "E:\\Qingxiaotuan Agent CLI\\.pt-list-1787835305\\test_reconcile_stale_keeps_ali0",
+  "profile": "default",
+  "status": "running",
+  "pid": 14416,
+  "started_at": 1787835321.127857,
+  "updated_at": 1787835321.1555367,
+  "heartbeat": 1787835121.1545358,
+  "turns": 0,
+  "result": "",
+  "error": null,
+  "session_file": null,
+  "yolo": false
+}

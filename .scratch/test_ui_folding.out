@@ -1,0 +1,26 @@
+......F....F                                                             [100%]
+================================== FAILURES ===================================
+E   AttributeError: 'UI' object has no attribute '_ctx_pct'
+E:\Qingxiaotuan Agent CLI\tests\test_ui_folding.py:66: AttributeError: 'UI' object has no attribute '_ctx_pct'
+E   AssertionError: assert '( ◡ )' not in '+----------...n · ctx=0%\n'
+      
+      '( ◡ )' is contained here:
+        ---+
+             ( ◡ ) 
+            ╭─────╮
+            ╰─────╯
+        
+          C:/Users/28726  main · ctx=0%
+E:\Qingxiaotuan Agent CLI\tests\test_ui_folding.py:142: AssertionError: assert '( ◡ )' not in '+----------...n · ctx=0%\n'
+=========================== short test summary info ===========================
+FAILED tests/test_ui_folding.py::test_add_tokens_and_context_pct - AttributeError: 'UI' object has no attribute '_ctx_pct'
+FAILED tests/test_ui_folding.py::test_banner_renders_kimi_style_box - AssertionError: assert '( ◡ )' not in '+----------...n · ctx=0%\n'
+  
+  '( ◡ )' is contained here:
+    ---+
+         ( ◡ ) 
+        ╭─────╮
+        ╰─────╯
+    
+      C:/Users/28726  main · ctx=0%
+2 failed, 10 passed in 1.80s

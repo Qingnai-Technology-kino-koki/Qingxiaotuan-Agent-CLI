@@ -1,0 +1,3 @@
+{"ts": 1787835777.5240574, "type": "user", "message": {"role": "user", "content": "研究X"}}
+{"ts": 1787835777.5295732, "type": "assistant", "message": {"role": "assistant", "content": "回声: 研究Y", "tool_calls": []}}
+{"ts": 1787835777.5305815, "type": "assistant", "message": {"role": "assistant", "content": "回声: 研究X", "tool_calls": []}}

@@ -176,3 +176,62 @@ def test_ext_skill_search(tmp_path):
     out = k.require("tool_registry").dispatch("ext_skill_search", json.dumps(
         {"query": "zzz-no-such-skill"}), _ctx(k, tmp_path))
     assert "packages" in out
+
+
+# ---------------------------------------------------------------- safety (IPC 子进程冒烟)
+
+HAVE_SAFETY = "safety" in AVAIL
+
+
+@pytest.mark.skipif(not HAVE_SAFETY, reason="safety 引擎不可用")
+def test_ext_safety_score_safe_command(tmp_path):
+    """IPC 子进程: 安全命令应返回 risk=none。"""
+    k = _kernel()
+    out = k.require("tool_registry").dispatch("ext_safety_score", json.dumps(
+        {"command": "ls -la"}), _ctx(k, tmp_path))
+    result = json.loads(out)
+    assert result["risk"] == "none"
+    assert result["block"] is False
+
+
+@pytest.mark.skipif(not HAVE_SAFETY, reason="safety 引擎不可用")
+def test_ext_safety_score_critical_shutdown(tmp_path):
+    """IPC 子进程: shutdown 命令应返回 critical + block=True。"""
+    k = _kernel()
+    out = k.require("tool_registry").dispatch("ext_safety_score", json.dumps(
+        {"command": "shutdown -h now"}), _ctx(k, tmp_path))
+    result = json.loads(out)
+    assert result["risk"] == "critical"
+    assert result["block"] is True
+
+
+@pytest.mark.skipif(not HAVE_SAFETY, reason="safety 引擎不可用")
+def test_ext_safety_score_high_docker(tmp_path):
+    """IPC 子进程: docker rm -f 应返回 high。"""
+    k = _kernel()
+    out = k.require("tool_registry").dispatch("ext_safety_score", json.dumps(
+        {"command": "docker rm -f abc"}), _ctx(k, tmp_path))
+    result = json.loads(out)
+    assert result["risk"] == "high"
+    assert result["score"] == 70
+
+
+@pytest.mark.skipif(not HAVE_SAFETY, reason="safety 引擎不可用")
+def test_ext_safety_score_medium_pkill(tmp_path):
+    """IPC 子进程: pkill 应返回 medium。"""
+    k = _kernel()
+    out = k.require("tool_registry").dispatch("ext_safety_score", json.dumps(
+        {"command": "pkill -f python"}), _ctx(k, tmp_path))
+    result = json.loads(out)
+    assert result["risk"] == "medium"
+    assert result["score"] == 40
+
+
+@pytest.mark.skipif(not HAVE_SAFETY, reason="safety 引擎不可用")
+def test_ext_safety_score_indirection(tmp_path):
+    """IPC 子进程: 归一化穿透间接写法的关机命令仍应命中。"""
+    k = _kernel()
+    out = k.require("tool_registry").dispatch("ext_safety_score", json.dumps(
+        {"command": 'CMD="reboot"; $CMD'}), _ctx(k, tmp_path))
+    result = json.loads(out)
+    assert result["risk"] == "critical"

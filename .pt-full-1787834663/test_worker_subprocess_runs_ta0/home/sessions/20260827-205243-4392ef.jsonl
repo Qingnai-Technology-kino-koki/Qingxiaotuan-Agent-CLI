@@ -1,0 +1,11 @@
+{"ts": 1787835163.2002282, "type": "session.meta", "kind": "background", "job_id": "worker-e2e-001", "task": "读取 note.txt", "started_at": 1787835160.638937}
+{"ts": 1787835163.2002282, "type": "job.start", "job_id": "worker-e2e-001", "task": "读取 note.txt"}
+{"ts": 1787835164.890477, "type": "user", "message": {"role": "user", "content": "读取 note.txt"}}
+{"ts": 1787835167.4410605, "type": "usage", "turn": 1, "delta": {"prompt_tokens": 10, "completion_tokens": 5, "prompt_cache_hit_tokens": 4, "prompt_cache_miss_tokens": 6}, "provider": "openai-compatible", "model": "mock", "cost_usd": 1.5e-05}
+{"ts": 1787835167.4410605, "type": "assistant", "message": {"role": "assistant", "content": "", "tool_calls": [{"id": "call_1", "function": {"name": "read_file", "arguments": "{\"path\": \"note.txt\"}"}}]}}
+{"ts": 1787835167.4410605, "type": "tool_call", "name": "read_file", "arguments": "{\"path\": \"note.txt\"}"}
+{"ts": 1787835167.45648, "type": "tool", "message": {"role": "tool", "tool_call_id": "call_1", "name": "read_file", "content": "# E:\\Qingxiaotuan Agent CLI\\.pt-full-1787834663\\test_worker_subprocess_runs_ta0\\ws\\note.txt\n后台任务数据", "status": "ok"}, "name": "read_file", "content": "# E:\\Qingxiaotuan Agent CLI\\.pt-full-1787834663\\test_worker_subprocess_runs_ta0\\ws\\note.txt\n后台任务数据"}
+{"ts": 1787835167.4744108, "type": "usage", "turn": 2, "delta": {"prompt_tokens": 10, "completion_tokens": 5, "prompt_cache_hit_tokens": 4, "prompt_cache_miss_tokens": 6}, "provider": "openai-compatible", "model": "mock", "cost_usd": 1.5e-05}
+{"ts": 1787835167.4744108, "type": "assistant", "message": {"role": "assistant", "content": "已读取: 后台任务数据\n【已完成】后台任务完成", "tool_calls": []}}
+{"ts": 1787835167.4829805, "type": "agent.turn", "turn": 2, "summary": "已读取: 后台任务数据\n【已完成】后台任务完成"}
+{"ts": 1787835167.489886, "type": "job.done", "job_id": "worker-e2e-001", "turns": 2}

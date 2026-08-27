@@ -1,0 +1,6 @@
+{"type": "session.meta", "task": "t"}
+{"type": "user", "message": {"role": "user", "content": "hi"}}
+{"type": "assistant", "message": {"role": "assistant", "content": "yo"}}
+{"type": "tool_call", "name": "read_file"}
+{"type": "tool", "message": {"role": "tool", "content": "ok"}}
+{"type": "garbage", "message": {}}

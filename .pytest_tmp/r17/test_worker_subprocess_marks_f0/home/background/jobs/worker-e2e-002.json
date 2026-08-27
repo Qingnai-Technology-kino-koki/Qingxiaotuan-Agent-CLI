@@ -1,0 +1,16 @@
+{
+  "job_id": "worker-e2e-002",
+  "task": "必然失败的任务",
+  "workspace": "E:\\Qingxiaotuan Agent CLI\\.pytest_tmp\\r17\\test_worker_subprocess_marks_f0\\ws",
+  "profile": "default",
+  "status": "failed",
+  "pid": 50820,
+  "started_at": 1787745943.8873384,
+  "updated_at": 1787745963.6137657,
+  "heartbeat": 1787745963.6122925,
+  "turns": 1,
+  "result": "[模型错误] 模型调用失败 (已重试 3 次): Error code: 500 - {'error': 'script exhausted'}",
+  "error": "[模型错误] 模型调用失败 (已重试 3 次): Error code: 500 - {'error': 'script exhausted'}",
+  "session_file": "E:\\Qingxiaotuan Agent CLI\\.pytest_tmp\\r17\\test_worker_subprocess_marks_f0\\home\\sessions\\20260826-200547-e27e61.jsonl",
+  "yolo": false
+}

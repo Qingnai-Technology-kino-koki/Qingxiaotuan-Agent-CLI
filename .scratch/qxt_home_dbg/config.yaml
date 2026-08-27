@@ -1,0 +1,5 @@
+model:
+  provider: doubao
+  model: doubao-1.5-pro-256k
+  base_url: https://ark.cn-beijing.volces.com/api/v3
+  api_key_env: ARK_API_KEY

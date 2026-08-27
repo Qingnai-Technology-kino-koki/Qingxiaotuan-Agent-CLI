@@ -1,0 +1,16 @@
+{
+  "job_id": "bg-test-recover",
+  "task": "可恢复任务",
+  "workspace": "E:\\Qingxiaotuan Agent CLI\\.pytest_tmp\\r17\\test_background_store_recovera0",
+  "profile": "default",
+  "status": "queued",
+  "pid": null,
+  "started_at": 1787745712.236221,
+  "updated_at": 1787745712.2362623,
+  "heartbeat": 1787745712.236221,
+  "turns": 0,
+  "result": "",
+  "error": null,
+  "session_file": null,
+  "yolo": false
+}

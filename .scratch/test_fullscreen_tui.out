@@ -1,0 +1,7 @@
+F.                                                                       [100%]
+================================== FAILURES ===================================
+E   AssertionError: assert '✦' in '  ✨\n  ( ^ ^ )\n  ╭─────╮\n  ╰─────╯\n\n状态 空闲\n事件 0\n焦点 ●\nTab 切换 · Ctrl+J 提交\nCtrl+C 取消 · Ctrl+Q 退出'
+E:\Qingxiaotuan Agent CLI\tests\test_fullscreen_tui.py:10: AssertionError: assert '✦' in '  ✨\n  ( ^ ^ )\n  ╭─────╮\n  ╰─────╯\n\n状态 空闲\n事件 0\n焦点 ●\nTab 切换 · Ctrl+J 提交\nCtrl+C 取消 · Ctrl+Q 退出'
+=========================== short test summary info ===========================
+FAILED tests/test_fullscreen_tui.py::test_fullscreen_tui_renders_mascot_states - AssertionError: assert '✦' in '  ✨\n  ( ^ ^ )\n  ╭─────╮\n  ╰─────╯\n\n状态 空闲\n事件 0\n焦点 ●\nTab 切换 · Ctrl+J 提交\nCtrl+C 取消 · Ctrl+Q 退出'
+1 failed, 1 passed in 0.54s

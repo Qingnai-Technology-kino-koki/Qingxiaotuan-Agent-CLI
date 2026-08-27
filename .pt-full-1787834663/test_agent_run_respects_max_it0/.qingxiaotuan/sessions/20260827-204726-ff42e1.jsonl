@@ -1,0 +1,16 @@
+{"ts": 1787834846.6754053, "type": "user", "message": {"role": "user", "content": "一个永不结束的任务"}}
+{"ts": 1787834846.681406, "type": "assistant", "message": {"role": "assistant", "content": "", "tool_calls": [{"id": "t1", "function": {"name": "shell", "arguments": "echo hi"}}]}}
+{"ts": 1787834846.684937, "type": "tool_call", "name": "shell", "arguments": "echo hi"}
+{"ts": 1787834846.6899486, "type": "tool", "message": {"role": "tool", "tool_call_id": "t1", "name": "shell", "content": "[错误] 未知工具: shell", "status": "error"}, "name": "shell", "content": "[错误] 未知工具: shell"}
+{"ts": 1787834846.692947, "type": "assistant", "message": {"role": "assistant", "content": "", "tool_calls": [{"id": "t1", "function": {"name": "shell", "arguments": "echo hi"}}]}}
+{"ts": 1787834846.693949, "type": "tool_call", "name": "shell", "arguments": "echo hi"}
+{"ts": 1787834846.6959474, "type": "tool", "message": {"role": "tool", "tool_call_id": "t1", "name": "shell", "content": "[错误] 未知工具: shell", "status": "error"}, "name": "shell", "content": "[错误] 未知工具: shell"}
+{"ts": 1787834846.6979477, "type": "assistant", "message": {"role": "assistant", "content": "", "tool_calls": [{"id": "t1", "function": {"name": "shell", "arguments": "echo hi"}}]}}
+{"ts": 1787834846.700614, "type": "tool_call", "name": "shell", "arguments": "echo hi"}
+{"ts": 1787834846.702809, "type": "tool", "message": {"role": "tool", "tool_call_id": "t1", "name": "shell", "content": "[错误] 未知工具: shell", "status": "error"}, "name": "shell", "content": "[错误] 未知工具: shell"}
+{"ts": 1787834846.7048085, "type": "assistant", "message": {"role": "assistant", "content": "", "tool_calls": [{"id": "t1", "function": {"name": "shell", "arguments": "echo hi"}}]}}
+{"ts": 1787834846.705808, "type": "tool_call", "name": "shell", "arguments": "echo hi"}
+{"ts": 1787834846.706808, "type": "tool", "message": {"role": "tool", "tool_call_id": "t1", "name": "shell", "content": "[错误] 未知工具: shell", "status": "error"}, "name": "shell", "content": "[错误] 未知工具: shell"}
+{"ts": 1787834846.7088077, "type": "assistant", "message": {"role": "assistant", "content": "", "tool_calls": [{"id": "t1", "function": {"name": "shell", "arguments": "echo hi"}}]}}
+{"ts": 1787834846.710807, "type": "tool_call", "name": "shell", "arguments": "echo hi"}
+{"ts": 1787834846.7118075, "type": "tool", "message": {"role": "tool", "tool_call_id": "t1", "name": "shell", "content": "[错误] 未知工具: shell", "status": "error"}, "name": "shell", "content": "[错误] 未知工具: shell"}

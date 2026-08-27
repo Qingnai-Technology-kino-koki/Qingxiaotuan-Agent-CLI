@@ -1,0 +1,10 @@
+[
+  {
+    "id": "6c0bc6a4",
+    "name": "每日总结",
+    "prompt": "总结今天的工作区变化",
+    "interval_minutes": 1440,
+    "last_run": 0,
+    "enabled": true
+  }
+]

@@ -1,0 +1,16 @@
+{
+  "job_id": "bg-test",
+  "task": "分析项目",
+  "workspace": "E:\\Qingxiaotuan Agent CLI\\.pt-full-1787834663\\test_background_store_roundtri0",
+  "profile": "default",
+  "status": "running",
+  "pid": 1234,
+  "started_at": 1787834675.1165295,
+  "updated_at": 1787834675.1467357,
+  "heartbeat": 42.0,
+  "turns": 0,
+  "result": "",
+  "error": null,
+  "session_file": null,
+  "yolo": false
+}

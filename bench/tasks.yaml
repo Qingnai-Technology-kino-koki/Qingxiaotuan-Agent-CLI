@@ -1,0 +1,75 @@
+# 软件工程能力评测任务集 (声明式)
+#
+# 每个任务:
+#   id          任务标识
+#   instruction 给 qxt 的自然语言指令
+#   files       工作区初始化文件 (相对路径 -> 内容)
+#   check       验收脚本 (退出码 0 = 通过), 在临时工作区里以 shell 执行
+#   timeout     单任务超时 (秒)
+#
+# 说明: 下面是 4 个覆盖「理解 / 改写 / 测试闭环 / 多文件重构」的最小样例。
+# 真实对比 Claude Code 时, 把 check 写成能真正验证行为的命令 (pytest/python -c/断言脚本),
+# 并通过 --model 接入强模型端点。
+
+tasks:
+  - id: understand_api
+    instruction: >
+      阅读当前工作区的 calculator.py, 用一句话说明 add 函数的边界行为,
+      并把结论写进 NOTES.md (不要改动 calculator.py)。
+    files:
+      calculator.py: |
+        def add(a, b):
+            return a + b
+    check: python -c "import os; assert os.path.exists('NOTES.md') and 'add' in open('NOTES.md').read()"
+    timeout: 300
+
+  - id: fix_bug
+    instruction: >
+      tests/test_math.py 当前有一条断言失败 (实际返回的是减法而非加法)。
+      修改 mathlib.py 让测试通过, 不要改测试文件。
+    files:
+      mathlib.py: |
+        def operate(a, b):
+            return a - b   # BUG: 应该是加法
+      tests/test_math.py: |
+        def test_operate():
+            from mathlib import operate
+            assert operate(2, 3) == 5
+    check: python -m pytest tests/test_math.py -q
+    timeout: 300
+
+  - id: add_test
+    instruction: >
+      为 calculator.py 的 add 函数补一个 pytest 测试文件 tests/test_calc.py,
+      覆盖正整数/负数/零三种情况, 并确认测试通过。
+    files:
+      calculator.py: |
+        def add(a, b):
+            return a + b
+    check: python -m pytest tests/test_calc.py -q
+    timeout: 300
+
+  - id: refactor_util
+    instruction: >
+      把 utils.py 里的 two_sum 复制逻辑抽成可复用函数 dedupe, 并让所有调用点改用新函数,
+      不改变对外行为。
+    files:
+      utils.py: |
+        def two_sum(nums, target):
+            seen = {}
+            for i, n in enumerate(nums):
+                if target - n in seen:
+                    return [seen[target - n], i]
+                seen[n] = i
+            return []
+
+
+        def process(items):
+            # 调用点: 这里用了一份重复的「去重」逻辑
+            out = []
+            for x in items:
+                if x not in out:
+                    out.append(x)
+            return out
+    check: python -c "from utils import process, two_sum; assert process([1,1,2])==[1,2]; assert two_sum([2,7,11], 9)==[0,1]"
+    timeout: 300

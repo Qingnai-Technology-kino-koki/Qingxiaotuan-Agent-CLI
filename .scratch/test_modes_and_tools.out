@@ -1,0 +1,7 @@
+.........F                                                               [100%]
+================================== FAILURES ===================================
+E   AttributeError: 'FakeAgent' object has no attribute 'workspace'
+E:\Qingxiaotuan Agent CLI\qingxiaotuan\core\devloop.py:47: AttributeError: 'FakeAgent' object has no attribute 'workspace'
+=========================== short test summary info ===========================
+FAILED tests/test_modes_and_tools.py::test_loop_detects_repetition - AttributeError: 'FakeAgent' object has no attribute 'workspace'
+1 failed, 9 passed in 0.35s

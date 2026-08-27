@@ -1,0 +1,11 @@
+[
+  {
+    "id": "95dce5b1",
+    "name": "日报",
+    "prompt": "写今日日报",
+    "interval_minutes": 60,
+    "last_run": 1787739821.534203,
+    "enabled": true,
+    "output": "E:\\Qingxiaotuan Agent CLI\\.pytest_tmp\\r13\\test_run_job_writes_output_fil0\\report.md"
+  }
+]

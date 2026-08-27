@@ -2464,6 +2464,8 @@ def _handle_slash(cmd: str, agent, config: Config, workspace: str) -> bool:
         _cmd_diff(workspace, arg)
     elif head == "/undo":
         _cmd_undo(workspace, arg, agent)
+    elif head == "/log":
+        _cmd_log(agent, arg)
     elif head == "/impact":
         _cmd_impact(workspace, arg, agent)
     elif head == "/mcp":
@@ -2518,6 +2520,7 @@ _HELP = """\n可用斜杠命令 (Slash Commands)
   /compact   手动压缩上下文 (折叠旧历史)
   /diff      工作区变更摘要 (支持 /diff <file> / /diff --full)
   /undo      精细回滚 (事务化账本: /undo /undo N /undo <file> /undo all /undo --safe)
+  /log       最近工具调用历史 ( /log [N] 默认 15 条 )
   /impact    展示操作账本与影响半径 (哪些文件被改、改了几步)
   /mcp       接入的外部 MCP server 与工具 ( /mcp <server> 看该 server 的工具)
   /image     挂接图片随下一轮发送 ( /image <本地路径|http(s) URL|data: URI> )
@@ -2586,6 +2589,55 @@ def cmd_undo(args) -> int:
     ledger.persist()
     return 0
 
+def _cmd_log(agent, arg: str) -> None:
+    """/log [N] — 展示最近 N 条工具调用历史 (默认 15)。"""
+    from datetime import datetime
+    n = 15
+    if arg.strip():
+        try:
+            n = int(arg.strip())
+        except ValueError:
+            n = 15
+    # 从 session 事件流读取 tool_call 事件
+    session = agent.session
+    if session is None or not session.file.exists():
+        ui.info("  暂无工具调用记录。")
+        return
+    tool_events = []
+    try:
+        with open(session.file, "r", encoding="utf-8") as f:
+            for line in f:
+                line = line.strip()
+                if not line:
+                    continue
+                try:
+                    import json as _json
+                    rec = _json.loads(line)
+                except Exception:  # noqa: BLE001
+                    continue
+                if rec.get("type") == "tool_call":
+                    tool_events.append(rec)
+    except Exception:  # noqa: BLE001
+        ui.info("  暂无工具调用记录。")
+        return
+    if not tool_events:
+        ui.info("  暂无工具调用记录。")
+        return
+    recent = tool_events[-n:]
+    ui.info("")
+    ui.info(f"  === 最近 {len(recent)} 条工具调用 ===")
+    ui.info("")
+    for ev in recent:
+        ts = datetime.fromtimestamp(ev.get("ts", 0)).strftime("%H:%M:%S")
+        name = ev.get("name", "?")
+        args_str = ev.get("arguments", "")
+        # 截断过长的参数
+        if len(args_str) > 120:
+            args_str = args_str[:117] + "..."
+        ui.info(f"    {ts} {name}")
+        if args_str:
+            ui.info(f"           {args_str}")
+
 
 def cmd_impact(args) -> int:
     """CLI: qxt impact — 展示操作账本与影响半径 (跨进程读取持久化账本)。"""
@@ -2602,16 +2654,57 @@ def cmd_impact(args) -> int:
         ui.info("  操作账本为空: 尚未修改任何文件。")
         return 0
     stats = ledger.stats()
-    ui.info(f"  影响半径: {stats['records']} 次操作, 涉及 {stats['files_touched']} 个文件")
-    if stats["files"]:
-        preview = stats["files"][:20]
-        tail = f" …还有 {len(stats['files']) - 20} 个" if len(stats["files"]) > 20 else ""
-        ui.info("  " + "  ".join(preview) + tail)
+    history = ledger.history()
+
+    # ---- 统计概览
     ui.info("")
-    ui.info("  最近变更凭证:")
-    for rec in ledger.history()[-15:]:
+    ui.info("  === 影响半径 (Blast Radius) ===")
+    ui.info("")
+    ui.info(f"  操作总数: {stats['records']}")
+    ui.info(f"""  受影响文件: {stats['files_touched']} 个""")
+
+    # ---- 文件分类统计 (按扩展名)
+    ext_counts: dict[str, int] = {}
+    for f in stats["files"]:
+        ext = Path(f).suffix or "(no ext)"
+        ext_counts[ext] = ext_counts.get(ext, 0) + 1
+    if ext_counts:
+        ui.info("")
+        ui.info("  文件类型分布:")
+        for ext, count in sorted(ext_counts.items(), key=lambda x: -x[1]):
+            bar = "#" * min(count, 30)
+            ui.info(f"    {ext:12s} {count:3d}  {bar}")
+
+    # ---- 工具使用统计
+    tool_counts: dict[str, int] = {}
+    for rec in history:
+        t = rec["tool"]
+        tool_counts[t] = tool_counts.get(t, 0) + 1
+    if tool_counts:
+        ui.info("")
+        ui.info("  工具使用分布:")
+        for tool, count in sorted(tool_counts.items(), key=lambda x: -x[1]):
+            bar = "#" * min(count, 30)
+            ui.info(f"    {tool:24s} {count:3d}  {bar}")
+
+    # ---- 文件列表
+    if stats["files"]:
+        ui.info("")
+        ui.info("  受影响文件:")
+        for f in stats["files"][:30]:
+            ui.info(f"    {f}")
+        if len(stats["files"]) > 30:
+            ui.info(f"    ...还有 {len(stats['files']) - 30} 个")
+
+    # ---- 最近变更时间线
+    ui.info("")
+    ui.info("  最近变更时间线:")
+    for rec in history[-15:]:
         ts = datetime.fromtimestamp(rec["ts"]).strftime("%H:%M:%S")
-        ui.info(f"    [{rec['id']}] {ts} {rec['tool']}: {', '.join(rec['targets'])}")
+        targets = ", ".join(rec["targets"][:3])
+        if len(rec["targets"]) > 3:
+            targets += f" +{len(rec['targets']) - 3}"
+        ui.info(f"    [{rec['id']}] {ts} {rec['tool']}: {targets}")
     return 0
 
 

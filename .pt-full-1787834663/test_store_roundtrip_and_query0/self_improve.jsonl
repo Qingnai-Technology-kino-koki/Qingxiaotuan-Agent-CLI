@@ -1,0 +1,1 @@
+{"id": "g1", "severity": "high", "action": "confirm", "match": {"tool": "run_shell"}, "message": "历史上被拒 3 次", "meta": {"source": "self-improve"}}

@@ -1,0 +1,10 @@
+[
+  {
+    "id": "684813b8",
+    "name": "任务A",
+    "prompt": "p",
+    "interval_minutes": 60,
+    "last_run": 1787746116.8599215,
+    "enabled": true
+  }
+]

@@ -1,0 +1,5 @@
+s....
+!!!!!!!!!!!!!!!!!!!!!!!!!!!!!! KeyboardInterrupt !!!!!!!!!!!!!!!!!!!!!!!!!!!!!!
+<frozen ntpath>:132: KeyboardInterrupt
+(to show a full traceback on KeyboardInterrupt use --full-trace)
+4 passed, 1 skipped in 1.41s

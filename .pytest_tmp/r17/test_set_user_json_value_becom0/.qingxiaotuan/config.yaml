@@ -1,0 +1,4 @@
+model:
+  worker:
+    provider: opencode-zen
+    model: deepseek-v4-flash-free

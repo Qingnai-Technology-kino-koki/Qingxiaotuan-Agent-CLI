@@ -1,0 +1,18 @@
+[
+  {
+    "id": "b3a2d0b1",
+    "name": "任务0",
+    "prompt": "prompt0",
+    "interval_minutes": 60,
+    "last_run": 1787749711.019064,
+    "enabled": true
+  },
+  {
+    "id": "45c9eea1",
+    "name": "任务1",
+    "prompt": "prompt1",
+    "interval_minutes": 60,
+    "last_run": 1787749711.0741901,
+    "enabled": true
+  }
+]

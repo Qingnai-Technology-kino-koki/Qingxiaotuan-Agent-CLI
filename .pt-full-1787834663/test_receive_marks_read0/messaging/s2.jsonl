@@ -1,0 +1,2 @@
+{"message_id": "90debeaf-d97b-4ee6-8c3d-96ab11efc134", "from_session": "s1", "from_name": "a", "to_session": "s2", "content": "msg1", "timestamp": 1787834891.567036, "message_type": "text", "read": true, "metadata": {}}
+{"message_id": "a0031be3-b249-4c0c-ac38-23eeeaa632cf", "from_session": "s1", "from_name": "a", "to_session": "s2", "content": "msg2", "timestamp": 1787834891.5720396, "message_type": "text", "read": true, "metadata": {}}

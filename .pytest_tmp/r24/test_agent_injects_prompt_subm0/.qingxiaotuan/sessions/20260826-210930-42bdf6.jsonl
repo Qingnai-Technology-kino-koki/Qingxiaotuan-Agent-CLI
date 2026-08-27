@@ -1,0 +1,2 @@
+{"ts": 1787749770.6912744, "type": "user", "message": {"role": "user", "content": "HOOKCTX-42\n\n随便说点什么"}}
+{"ts": 1787749770.700179, "type": "assistant", "message": {"role": "assistant", "content": "done", "tool_calls": []}}

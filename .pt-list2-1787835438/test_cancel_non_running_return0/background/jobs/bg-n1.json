@@ -1,0 +1,16 @@
+{
+  "job_id": "bg-n1",
+  "task": "task",
+  "workspace": "E:\\Qingxiaotuan Agent CLI\\.pt-list2-1787835438\\test_cancel_non_running_return0",
+  "profile": "default",
+  "status": "done",
+  "pid": null,
+  "started_at": 1787835447.0404365,
+  "updated_at": 1787835447.0874746,
+  "heartbeat": 1787835447.0404365,
+  "turns": 0,
+  "result": "",
+  "error": null,
+  "session_file": null,
+  "yolo": false
+}

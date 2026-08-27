@@ -1,0 +1,16 @@
+{
+  "job_id": "bg-test-atomic",
+  "task": "原子任务",
+  "workspace": "E:\\Qingxiaotuan Agent CLI\\.pytest_tmp\\r17\\test_background_store_atomic_w0",
+  "profile": "default",
+  "status": "queued",
+  "pid": null,
+  "started_at": 1787745712.942547,
+  "updated_at": 1787745712.94261,
+  "heartbeat": 1787745712.942547,
+  "turns": 0,
+  "result": "",
+  "error": null,
+  "session_file": null,
+  "yolo": false
+}

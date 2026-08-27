@@ -1,0 +1,13 @@
+.FF.F                                                                    [100%]
+================================== FAILURES ===================================
+E   Failed: DID NOT RAISE Exception
+E:\Qingxiaotuan Agent CLI\tests\test_json_engine.py:31: Failed: DID NOT RAISE Exception
+E   KeyError: 'changes'
+E:\Qingxiaotuan Agent CLI\tests\test_json_engine.py:42: KeyError: 'changes'
+E   assert 'alice' in '{"value": null, "found": false}'
+E:\Qingxiaotuan Agent CLI\tests\test_json_engine.py:80: assert 'alice' in '{"value": null, "found": false}'
+=========================== short test summary info ===========================
+FAILED tests/test_json_engine.py::test_pointer_not_found - Failed: DID NOT RAISE Exception
+FAILED tests/test_json_engine.py::test_diff_one_change - KeyError: 'changes'
+FAILED tests/test_json_engine.py::test_kernel_tools_wired - assert 'alice' in '{"value": null, "found": false}'
+3 failed, 2 passed in 5.84s

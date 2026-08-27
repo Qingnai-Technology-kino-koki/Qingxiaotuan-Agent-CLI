@@ -10,6 +10,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ### Added
 
 - **Safety-first agent core**: static risk scoring before every shell execution — critical-level commands are blocked by default; unified red-line rules (recursive `rm`, force-push, Windows `rd /s`, **system shutdown/reboot**, **chmod -R 000 /**, **chown -R root /**) shared by the safety engine, YOLO mode and code tools. HIGH patterns expanded: `git clean -f`, `docker rm -f`, `kubectl delete`, `iptables -F`. MEDIUM patterns expanded: `systemctl stop`, `pkill`, `killall`, `chmod 000`, `chown root`.
+- **`/log` slash command**: show recent tool call history from the session event stream (`/log [N]`, default 15).
+- **`/impact` enhanced**: now shows file type distribution, tool usage distribution, and a visual bar chart alongside the traditional file list and timeline.
 - **Plan mode**: read-only enforcement with fail-closed semantics — unknown commands are denied rather than silently allowed.
 - **Self-improvement loop**: post-execution review distills guardrails that take effect before the next dispatch.
 - **10 pure-Python external engines** behind an in-process registry (`qxt ext selftest`): diff, crypto, index, ansi, safety, json, search, notify, rules, skill_market — zero compilation, zero IPC overhead.

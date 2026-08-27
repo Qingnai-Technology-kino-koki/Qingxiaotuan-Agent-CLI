@@ -1,0 +1,1 @@
+{"id": "m0001", "ts": 1787834844.4954457, "tool": "edit_file", "kind": "mutation", "summary": "edit", "targets": ["a.txt"], "snaps_meta": [{"rel": "a.txt", "snap": "E:\\Qingxiaotuan Agent CLI\\.pt-full-1787834663\\test_journal_durable_roundtrip0\\.qxt\\ledger\\s1787834844479501300_0001_0.bin", "existed": true, "kind": "file"}]}

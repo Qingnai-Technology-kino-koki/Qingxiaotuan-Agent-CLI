@@ -1,0 +1,4 @@
+model:
+  provider: openai-compatible
+  model: gpt-4o-mini
+  base_url: https://any/v1

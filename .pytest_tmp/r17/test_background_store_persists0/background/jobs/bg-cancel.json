@@ -1,0 +1,16 @@
+{
+  "job_id": "bg-cancel",
+  "task": "长任务",
+  "workspace": "E:\\Qingxiaotuan Agent CLI\\.pytest_tmp\\r17\\test_background_store_persists0",
+  "profile": "default",
+  "status": "cancel_requested",
+  "pid": null,
+  "started_at": 1787745713.0973325,
+  "updated_at": 1787745713.1177976,
+  "heartbeat": 1787745713.0973325,
+  "turns": 0,
+  "result": "",
+  "error": null,
+  "session_file": null,
+  "yolo": false
+}

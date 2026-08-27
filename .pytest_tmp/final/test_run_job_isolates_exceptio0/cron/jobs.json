@@ -1,0 +1,10 @@
+[
+  {
+    "id": "86474991",
+    "name": "坏任务",
+    "prompt": "会崩",
+    "interval_minutes": 60,
+    "last_run": 1787746113.755357,
+    "enabled": true
+  }
+]

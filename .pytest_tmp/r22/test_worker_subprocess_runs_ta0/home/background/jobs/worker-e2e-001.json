@@ -1,0 +1,16 @@
+{
+  "job_id": "worker-e2e-001",
+  "task": "读取 note.txt",
+  "workspace": "E:\\Qingxiaotuan Agent CLI\\.pytest_tmp\\r22\\test_worker_subprocess_runs_ta0\\ws",
+  "profile": "default",
+  "status": "done",
+  "pid": 34888,
+  "started_at": 1787747914.0341835,
+  "updated_at": 1787747932.9304693,
+  "heartbeat": 1787747932.9289105,
+  "turns": 2,
+  "result": "已读取: 后台任务数据\n【已完成】后台任务完成",
+  "error": null,
+  "session_file": "E:\\Qingxiaotuan Agent CLI\\.pytest_tmp\\r22\\test_worker_subprocess_runs_ta0\\home\\sessions\\20260826-203836-03136f.jsonl",
+  "yolo": false
+}

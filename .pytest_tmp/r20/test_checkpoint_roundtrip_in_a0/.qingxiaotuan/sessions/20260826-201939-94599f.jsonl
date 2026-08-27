@@ -1,0 +1,22 @@
+{"ts": 1787746780.2311773, "type": "user", "message": {"role": "user", "content": "写初版"}}
+{"ts": 1787746780.23884, "type": "assistant", "message": {"role": "assistant", "content": "", "tool_calls": [{"id": "c1", "function": {"name": "write_file", "arguments": "{\"path\": \"doc.txt\", \"content\": \"v1\"}"}}]}}
+{"ts": 1787746780.2439556, "type": "tool_call", "name": "write_file", "arguments": "{\"path\": \"doc.txt\", \"content\": \"v1\"}"}
+{"ts": 1787746780.2869916, "type": "tool", "message": {"role": "tool", "tool_call_id": "c1", "name": "write_file", "content": "已写入 E:\\Qingxiaotuan Agent CLI\\.pytest_tmp\\r20\\test_checkpoint_roundtrip_in_a0\\doc.txt (2 字符)"}, "name": "write_file", "content": "已写入 E:\\Qingxiaotuan Agent CLI\\.pytest_tmp\\r20\\test_checkpoint_roundtrip_in_a0\\doc.txt (2 字符)"}
+{"ts": 1787746780.2906668, "type": "assistant", "message": {"role": "assistant", "content": "初版写好", "tool_calls": []}}
+{"ts": 1787746780.3151977, "type": "user", "message": {"role": "user", "content": "打检查点"}}
+{"ts": 1787746780.320271, "type": "assistant", "message": {"role": "assistant", "content": "", "tool_calls": [{"id": "c2", "function": {"name": "checkpoint", "arguments": "{\"action\":\"save\",\"note\":\"改动前\"}"}}]}}
+{"ts": 1787746780.324812, "type": "tool_call", "name": "checkpoint", "arguments": "{\"action\":\"save\",\"note\":\"改动前\"}"}
+{"ts": 1787746780.3340943, "type": "tool", "message": {"role": "tool", "tool_call_id": "c2", "name": "checkpoint", "content": "检查点 cp1 已保存 (对话 7 条, 账本标记 1, 备注: 改动前)"}, "name": "checkpoint", "content": "检查点 cp1 已保存 (对话 7 条, 账本标记 1, 备注: 改动前)"}
+{"ts": 1787746780.3381279, "type": "assistant", "message": {"role": "assistant", "content": "已保存", "tool_calls": []}}
+{"ts": 1787746780.363689, "type": "user", "message": {"role": "user", "content": "改坏它"}}
+{"ts": 1787746780.3705704, "type": "assistant", "message": {"role": "assistant", "content": "", "tool_calls": [{"id": "c3", "function": {"name": "write_file", "arguments": "{\"path\": \"doc.txt\", \"content\": \"v2-broken\"}"}}, {"id": "c4", "function": {"name": "write_file", "arguments": "{\"path\": \"extra.txt\", \"content\": \"junk\"}"}}]}}
+{"ts": 1787746780.3746634, "type": "tool_call", "name": "write_file", "arguments": "{\"path\": \"doc.txt\", \"content\": \"v2-broken\"}"}
+{"ts": 1787746780.4255774, "type": "tool", "message": {"role": "tool", "tool_call_id": "c3", "name": "write_file", "content": "已写入 E:\\Qingxiaotuan Agent CLI\\.pytest_tmp\\r20\\test_checkpoint_roundtrip_in_a0\\doc.txt (9 字符)"}, "name": "write_file", "content": "已写入 E:\\Qingxiaotuan Agent CLI\\.pytest_tmp\\r20\\test_checkpoint_roundtrip_in_a0\\doc.txt (9 字符)"}
+{"ts": 1787746780.430622, "type": "tool_call", "name": "write_file", "arguments": "{\"path\": \"extra.txt\", \"content\": \"junk\"}"}
+{"ts": 1787746780.4736118, "type": "tool", "message": {"role": "tool", "tool_call_id": "c4", "name": "write_file", "content": "已写入 E:\\Qingxiaotuan Agent CLI\\.pytest_tmp\\r20\\test_checkpoint_roundtrip_in_a0\\extra.txt (4 字符)"}, "name": "write_file", "content": "已写入 E:\\Qingxiaotuan Agent CLI\\.pytest_tmp\\r20\\test_checkpoint_roundtrip_in_a0\\extra.txt (4 字符)"}
+{"ts": 1787746780.4767203, "type": "assistant", "message": {"role": "assistant", "content": "改完了", "tool_calls": []}}
+{"ts": 1787746780.4946961, "type": "user", "message": {"role": "user", "content": "回滚"}}
+{"ts": 1787746780.500985, "type": "assistant", "message": {"role": "assistant", "content": "", "tool_calls": [{"id": "c5", "function": {"name": "checkpoint", "arguments": "{\"action\":\"restore\"}"}}]}}
+{"ts": 1787746780.5061657, "type": "tool_call", "name": "checkpoint", "arguments": "{\"action\":\"restore\"}"}
+{"ts": 1787746780.5347145, "type": "tool", "message": {"role": "tool", "tool_call_id": "c5", "name": "checkpoint", "content": "已恢复到检查点 cp1: 文件回滚 2 项; 对话截回 6 条"}, "name": "checkpoint", "content": "已恢复到检查点 cp1: 文件回滚 2 项; 对话截回 6 条"}
+{"ts": 1787746780.5423353, "type": "assistant", "message": {"role": "assistant", "content": "已回滚", "tool_calls": []}}

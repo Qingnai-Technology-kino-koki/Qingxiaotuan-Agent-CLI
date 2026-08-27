@@ -1,0 +1,16 @@
+{
+  "job_id": "bg-q2",
+  "task": "task",
+  "workspace": "E:\\Qingxiaotuan Agent CLI\\.pytest_tmp\\r24\\test_recoverable_returns_queue0",
+  "profile": "default",
+  "status": "running",
+  "pid": 31712,
+  "started_at": 1787749638.8360336,
+  "updated_at": 1787749638.859797,
+  "heartbeat": 1787749638.8580494,
+  "turns": 0,
+  "result": "",
+  "error": null,
+  "session_file": null,
+  "yolo": false
+}

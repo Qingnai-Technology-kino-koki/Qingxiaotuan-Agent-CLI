@@ -348,3 +348,196 @@ def test_ansi_handle_envelope_new_methods():
     assert resp["result"]["text"] == "a  "
     meta = eng.list_methods()
     assert meta["version"].startswith("1.1") and "display_width" in meta["capabilities"]
+
+
+# ---------------------------------------------------------------- safety
+
+def test_safety_score_critical_shutdown_reboot():
+    """CRITICAL: 系统关机/重启命令应返回 critical + block=True。"""
+    from qingxiaotuan.ext.safety_engine import SafetyEngine
+
+    eng = SafetyEngine()
+    critical_cmds = [
+        "shutdown -h now",
+        "halt",
+        "poweroff",
+        "reboot",
+        "init 0",
+        "init 6",
+        "systemctl poweroff",
+        "systemctl reboot",
+        "systemctl halt",
+    ]
+    for cmd in critical_cmds:
+        res = eng.score({"command": cmd})
+        assert res["risk"] == "critical", f"shutdown 漏判: {cmd}"
+        assert res["block"] is True
+        assert res["score"] == 100
+
+
+def test_safety_score_critical_chmod_chown_recursive():
+    """CRITICAL: chmod -R 000 / 和 chown -R root / 应返回 critical。"""
+    from qingxiaotuan.ext.safety_engine import SafetyEngine
+
+    eng = SafetyEngine()
+    for cmd in ["chmod -R 000 /", "chmod -r 000 /", "chmod -R 0000 /",
+                "chown -R root /", "chown -r root /"]:
+        res = eng.score({"command": cmd})
+        assert res["risk"] == "critical", f"chmod/chown 漏判: {cmd}"
+
+
+def test_safety_score_high_docker_kubectl_git_clean():
+    """HIGH: docker rm/rmi -f, kubectl delete, git clean -f, git checkout -- . 应返回 high。"""
+    from qingxiaotuan.ext.safety_engine import SafetyEngine
+
+    eng = SafetyEngine()
+    high_cmds = [
+        "docker rm -f abc",
+        "docker rmi -f myimage",
+        "kubectl delete pod mypod",
+        "git clean -fd",
+        "git checkout -- .",
+        "iptables -F",
+        "ufw disable",
+    ]
+    for cmd in high_cmds:
+        res = eng.score({"command": cmd})
+        assert res["risk"] == "high", f"high 漏判: {cmd}"
+        assert res["block"] is False
+        assert res["score"] == 70
+
+
+def test_safety_score_medium_systemctl_stop_pkill():
+    """MEDIUM: systemctl stop, pkill, killall, chmod 000, chown root 应返回 medium。"""
+    from qingxiaotuan.ext.safety_engine import SafetyEngine
+
+    eng = SafetyEngine()
+    medium_cmds = [
+        "systemctl stop nginx",
+        "systemctl disable sshd",
+        "service nginx stop",
+        "pkill -f python",
+        "killall node",
+        "chmod 000 /tmp/secret",
+        "chown root /var/data",
+    ]
+    for cmd in medium_cmds:
+        res = eng.score({"command": cmd})
+        assert res["risk"] == "medium", f"medium 漏判: {cmd}"
+        assert res["block"] is False
+        assert res["score"] == 40
+
+
+def test_safety_score_safe_commands():
+    """安全命令应返回 none。"""
+    from qingxiaotuan.ext.safety_engine import SafetyEngine
+
+    eng = SafetyEngine()
+    safe_cmds = [
+        "ls -la",
+        "git push origin main",
+        "echo hello",
+        "python -m pytest",
+        "cat README.md",
+    ]
+    for cmd in safe_cmds:
+        res = eng.score({"command": cmd})
+        assert res["risk"] == "none", f"误判: {cmd}"
+        assert res["block"] is False
+        assert res["score"] == 0
+
+
+def test_safety_score_indirection_penetration():
+    """归一化穿透: 子壳/变量间接写法的关机命令仍应命中。"""
+    from qingxiaotuan.ext.safety_engine import SafetyEngine
+
+    eng = SafetyEngine()
+    indirect = [
+        "$(shutdown -h now)",
+        'CMD="reboot"; $CMD',
+        "sudo halt",
+        "$(rm -rf /)",
+        'R="rm"; F="-rf"; $R $F /important',
+    ]
+    for cmd in indirect:
+        res = eng.score({"command": cmd})
+        assert res["risk"] == "critical", f"间接写法漏判: {cmd}"
+
+
+def test_safety_analyze_batch():
+    """analyze() 批量分析: 混合风险级别应返回 overall = 最高风险。"""
+    from qingxiaotuan.ext.safety_engine import SafetyEngine
+
+    eng = SafetyEngine()
+    result = eng.analyze({"ops": [
+        {"kind": "shell", "text": "ls -la", "target": "."},
+        {"kind": "shell", "text": "git clean -fd", "target": "repo"},
+        {"kind": "shell", "text": "shutdown -h now", "target": "host"},
+    ]})
+    assert result["overall"] == "critical"  # 有 critical 则 overall=critical
+    assert len(result["items"]) == 3
+    risks = {it["risk"] for it in result["items"]}
+    assert "none" in risks and "high" in risks and "critical" in risks
+    assert "BLOCK" in result["advice"]
+
+
+def test_safety_analyze_empty():
+    """analyze() 空列表: overall=none。"""
+    from qingxiaotuan.ext.safety_engine import SafetyEngine
+
+    eng = SafetyEngine()
+    result = eng.analyze({"ops": []})
+    assert result["overall"] == "none"
+    assert "ok" in result["advice"]
+
+
+def test_safety_list_methods():
+    """list_methods() 返回引擎元数据。"""
+    from qingxiaotuan.ext.safety_engine import SafetyEngine
+
+    eng = SafetyEngine()
+    meta = eng.list_methods()
+    assert meta["engine"] == "safety"
+    assert "score" in meta["methods"]
+    assert "analyze" in meta["methods"]
+    assert "risk_scoring" in meta["capabilities"]
+
+
+def test_safety_handle_envelope():
+    """handle() JSONL 信封: 正确路由 + 未知方法报错。"""
+    from qingxiaotuan.ext.safety_engine import SafetyEngine
+
+    eng = SafetyEngine()
+    ok = json.loads(eng.handle(json.dumps(
+        {"id": 1, "method": "score", "params": {"command": "ls"}})))
+    assert ok["id"] == 1 and ok["ok"] is True
+    assert ok["result"]["risk"] == "none"
+
+    bad = json.loads(eng.handle(json.dumps(
+        {"id": 2, "method": "nope"})))
+    assert bad["ok"] is False and "Unknown" in bad["error"]
+
+
+def test_safety_analyze_overall_high_only():
+    """analyze() 全 HIGH 无 CRITICAL → overall=high。"""
+    from qingxiaotuan.ext.safety_engine import SafetyEngine
+
+    eng = SafetyEngine()
+    result = eng.analyze({"ops": [
+        {"kind": "shell", "text": "docker rm -f abc", "target": "ctr"},
+        {"kind": "shell", "text": "kubectl delete pod x", "target": "k8s"},
+    ]})
+    assert result["overall"] == "high"
+    assert "CONFIRM" in result["advice"]
+
+
+def test_safety_analyze_overall_medium_only():
+    """analyze() 全 MEDIUM → overall=medium。"""
+    from qingxiaotuan.ext.safety_engine import SafetyEngine
+
+    eng = SafetyEngine()
+    result = eng.analyze({"ops": [
+        {"kind": "shell", "text": "systemctl stop nginx", "target": "svc"},
+    ]})
+    assert result["overall"] == "medium"
+    assert "REVIEW" in result["advice"]

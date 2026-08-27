@@ -1,0 +1,16 @@
+{
+  "job_id": "bg-d1",
+  "task": "task",
+  "workspace": "E:\\Qingxiaotuan Agent CLI\\.pytest_tmp\\full2\\test_cancel_detached_kills_wor0",
+  "profile": "default",
+  "status": "cancelled",
+  "pid": 4242,
+  "started_at": 1787745605.2799838,
+  "updated_at": 1787745605.3503158,
+  "heartbeat": 1787745605.3473496,
+  "turns": 0,
+  "result": "",
+  "error": null,
+  "session_file": null,
+  "yolo": false
+}

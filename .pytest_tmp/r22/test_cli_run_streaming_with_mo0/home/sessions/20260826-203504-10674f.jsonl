@@ -1,0 +1,2 @@
+{"ts": 1787747705.4732947, "type": "user", "message": {"role": "user", "content": "用流式回答"}}
+{"ts": 1787747714.9680283, "type": "assistant", "message": {"role": "assistant", "content": "流式输出已送达", "tool_calls": []}}

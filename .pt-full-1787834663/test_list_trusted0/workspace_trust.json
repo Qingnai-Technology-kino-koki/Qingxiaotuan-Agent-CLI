@@ -1,0 +1,29 @@
+{
+  "E:\\a": {
+    "path": "E:\\a",
+    "level": "trusted",
+    "trusted_at": 1787834891.7854328,
+    "last_used": 1787834891.7854328,
+    "project_name": "",
+    "git_remote": "",
+    "trust_count": 1
+  },
+  "E:\\b": {
+    "path": "E:\\b",
+    "level": "limited",
+    "trusted_at": 0,
+    "last_used": 1787834891.7854328,
+    "project_name": "",
+    "git_remote": "",
+    "trust_count": 1
+  },
+  "E:\\c": {
+    "path": "E:\\c",
+    "level": "trusted",
+    "trusted_at": 1787834891.7854328,
+    "last_used": 1787834891.7854328,
+    "project_name": "",
+    "git_remote": "",
+    "trust_count": 1
+  }
+}

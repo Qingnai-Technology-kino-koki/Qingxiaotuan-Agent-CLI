@@ -1,0 +1,10 @@
+{"ts": 1787747870.8421886, "type": "user", "message": {"role": "user", "content": "子任务0"}}
+{"ts": 1787747870.84683, "type": "user", "message": {"role": "user", "content": "子任务2"}}
+{"ts": 1787747870.847244, "type": "user", "message": {"role": "user", "content": "子任务1"}}
+�: 子任务0", "tool_calls": []}}
+{"ts": 1787747870.8672547, "type": "assistant", "message": {"role": "assistant", "content": "回声: 子任务2", "tool_calls": []}}
+{"ts": 1787747870.8733165, "type": "assistant", "message": {"role": "assistant", "content": "回声: 子任务1", "tool_calls": []}}
+{"ts": 1787747870.9377825, "type": "user", "message": {"role": "user", "content": "子任务3"}}
+{"ts": 1787747870.9426696, "type": "user", "message": {"role": "user", "content": "子任务4"}}
+{"ts": 1787747870.9440687, "type": "assistant", "message": {"role": "assistant", "content": "回声: 子任务3", "tool_calls": []}}
+{"ts": 1787747870.9472823, "type": "assistant", "message": {"role": "assistant", "content": "回声: 子任务4", "tool_calls": []}}

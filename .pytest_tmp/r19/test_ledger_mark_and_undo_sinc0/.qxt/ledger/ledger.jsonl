@@ -1,0 +1,1 @@
+{"id": "m0001", "ts": 1787746731.1448064, "tool": "write_file", "kind": "mutation", "summary": "", "targets": ["a.txt"], "snaps_meta": [{"rel": "a.txt", "snap": "E:\\Qingxiaotuan Agent CLI\\.pytest_tmp\\r19\\test_ledger_mark_and_undo_sinc0\\.qxt\\ledger\\s1787746731119987400_0001_0.bin", "existed": true, "kind": "file"}]}

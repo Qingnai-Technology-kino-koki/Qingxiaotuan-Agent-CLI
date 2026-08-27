@@ -1,0 +1,16 @@
+{
+  "job_id": "bg-test-002",
+  "task": "任务2",
+  "workspace": "E:\\Qingxiaotuan Agent CLI\\.pytest_tmp\\r15\\test_background_store_list_sor0",
+  "profile": "default",
+  "status": "queued",
+  "pid": null,
+  "started_at": 1787741167.0785282,
+  "updated_at": 1787741167.078575,
+  "heartbeat": 1787741167.0785282,
+  "turns": 0,
+  "result": "",
+  "error": null,
+  "session_file": null,
+  "yolo": false
+}

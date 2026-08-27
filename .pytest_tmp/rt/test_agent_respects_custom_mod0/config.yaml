@@ -1,0 +1,3 @@
+model:
+  provider: my-gateway
+  model: my-model

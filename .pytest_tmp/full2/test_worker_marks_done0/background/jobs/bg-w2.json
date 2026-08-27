@@ -1,0 +1,16 @@
+{
+  "job_id": "bg-w2",
+  "task": "task",
+  "workspace": "E:\\Qingxiaotuan Agent CLI\\.pytest_tmp\\full2\\test_worker_marks_done0",
+  "profile": "default",
+  "status": "done",
+  "pid": 48184,
+  "started_at": 1787745605.639213,
+  "updated_at": 1787745605.7513437,
+  "heartbeat": 1787745605.7501516,
+  "turns": 1,
+  "result": "任务完成 ✓",
+  "error": null,
+  "session_file": "E:\\Qingxiaotuan Agent CLI\\.pytest_tmp\\full2\\test_worker_marks_done0\\sessions\\20260826-200005-5143d4.jsonl",
+  "yolo": false
+}

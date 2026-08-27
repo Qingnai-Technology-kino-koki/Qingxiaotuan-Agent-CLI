@@ -1,0 +1,24 @@
+{
+  "s1": {
+    "session_id": "s1",
+    "name": "a",
+    "working_dir": "/a",
+    "started_at": 1787834891.5595403,
+    "last_active": 1787834891.5595403,
+    "status": "active",
+    "pid": 0,
+    "model": "",
+    "capabilities": []
+  },
+  "s2": {
+    "session_id": "s2",
+    "name": "b",
+    "working_dir": "/b",
+    "started_at": 1787834891.5635364,
+    "last_active": 1787834891.5635364,
+    "status": "active",
+    "pid": 0,
+    "model": "",
+    "capabilities": []
+  }
+}

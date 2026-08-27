@@ -1,0 +1,10 @@
+[
+  {
+    "id": "6b490ef7",
+    "name": "快任务",
+    "prompt": "x",
+    "interval_minutes": 0,
+    "last_run": 0,
+    "enabled": true
+  }
+]

@@ -1,0 +1,3 @@
+{"ts": 1787745849.4079242, "type": "user", "message": {"role": "user", "content": "弱模型子任务"}}
+{"ts": 1787745856.4719365, "type": "user", "message": {"role": "user", "content": "还原后子任务"}}
+{"ts": 1787745856.477481, "type": "assistant", "message": {"role": "assistant", "content": "回声: 还原后子任务", "tool_calls": []}}

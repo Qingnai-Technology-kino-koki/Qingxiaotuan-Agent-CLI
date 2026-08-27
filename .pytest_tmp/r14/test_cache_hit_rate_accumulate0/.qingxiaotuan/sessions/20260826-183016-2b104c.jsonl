@@ -1,0 +1,4 @@
+{"ts": 1787740216.7535837, "type": "user", "message": {"role": "user", "content": "a"}}
+{"ts": 1787740216.7595806, "type": "assistant", "message": {"role": "assistant", "content": "ok", "tool_calls": []}}
+{"ts": 1787740216.7699873, "type": "user", "message": {"role": "user", "content": "b"}}
+{"ts": 1787740216.7886195, "type": "assistant", "message": {"role": "assistant", "content": "ok", "tool_calls": []}}

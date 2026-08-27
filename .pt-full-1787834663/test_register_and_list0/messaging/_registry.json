@@ -1,0 +1,24 @@
+{
+  "s1": {
+    "session_id": "s1",
+    "name": "session-1",
+    "working_dir": "/workspace",
+    "started_at": 1787834891.4884555,
+    "last_active": 1787834891.4884555,
+    "status": "active",
+    "pid": 100,
+    "model": "",
+    "capabilities": []
+  },
+  "s2": {
+    "session_id": "s2",
+    "name": "session-2",
+    "working_dir": "/workspace2",
+    "started_at": 1787834891.5006495,
+    "last_active": 1787834891.5006495,
+    "status": "active",
+    "pid": 200,
+    "model": "",
+    "capabilities": []
+  }
+}

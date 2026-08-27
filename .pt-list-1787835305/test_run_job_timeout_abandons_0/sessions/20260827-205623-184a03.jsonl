@@ -1,0 +1,4 @@
+{"ts": 1787835383.684398, "type": "session.meta", "kind": "cron", "job_id": "27193d07", "name": "慢任务", "prompt": "会卡住", "started_at": 1787835383.684398}
+{"ts": 1787835383.6904016, "type": "user", "role": "user", "content": "会卡住"}
+{"ts": 1787835384.712306, "type": "job.error", "error": "执行超时 (>1s), 已放弃本次执行"}
+{"ts": 1787835384.737084, "type": "job.done", "job_id": "27193d07", "ok": false, "session_file": "E:\\Qingxiaotuan Agent CLI\\.pt-list-1787835305\\test_run_job_timeout_abandons_0\\sessions\\20260827-205623-184a03.jsonl"}

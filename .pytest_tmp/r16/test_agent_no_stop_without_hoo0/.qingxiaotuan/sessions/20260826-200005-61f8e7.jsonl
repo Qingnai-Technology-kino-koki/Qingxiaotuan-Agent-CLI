@@ -1,0 +1,2 @@
+{"ts": 1787745606.3351936, "type": "user", "message": {"role": "user", "content": "plain input"}}
+{"ts": 1787745606.3442721, "type": "assistant", "message": {"role": "assistant", "content": "done", "tool_calls": []}}

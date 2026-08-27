@@ -1,0 +1,4 @@
+{"ts": 1787745751.782368, "type": "session.meta", "kind": "cron", "job_id": "fb4e8598", "name": "日报", "prompt": "写今日日报", "started_at": 1787745751.7823665}
+{"ts": 1787745751.7870307, "type": "user", "role": "user", "content": "写今日日报"}
+{"ts": 1787745751.7936745, "type": "assistant", "role": "assistant", "content": "今日完成 A/B/C"}
+{"ts": 1787745751.8138497, "type": "job.done", "job_id": "fb4e8598", "ok": true, "session_file": "E:\\Qingxiaotuan Agent CLI\\.pytest_tmp\\r17\\test_run_job_writes_session_an0\\sessions\\20260826-200231-454850.jsonl"}

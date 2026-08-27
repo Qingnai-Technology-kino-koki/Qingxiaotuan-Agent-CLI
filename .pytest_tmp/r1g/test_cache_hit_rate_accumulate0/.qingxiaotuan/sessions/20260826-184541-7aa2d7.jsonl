@@ -1,0 +1,6 @@
+{"ts": 1787741141.3949637, "type": "user", "message": {"role": "user", "content": "a"}}
+{"ts": 1787741141.3993523, "type": "usage", "turn": 1, "delta": {"prompt_cache_hit_tokens": 1000, "prompt_cache_miss_tokens": 0}, "provider": "deepseek", "model": "deepseek-chat", "cost_usd": 0.0}
+{"ts": 1787741141.4028716, "type": "assistant", "message": {"role": "assistant", "content": "ok", "tool_calls": []}}
+{"ts": 1787741141.4076178, "type": "user", "message": {"role": "user", "content": "b"}}
+{"ts": 1787741141.4118133, "type": "usage", "turn": 2, "delta": {"prompt_cache_hit_tokens": 2000, "prompt_cache_miss_tokens": 100}, "provider": "deepseek", "model": "deepseek-chat", "cost_usd": 0.0}
+{"ts": 1787741141.4135475, "type": "assistant", "message": {"role": "assistant", "content": "ok", "tool_calls": []}}

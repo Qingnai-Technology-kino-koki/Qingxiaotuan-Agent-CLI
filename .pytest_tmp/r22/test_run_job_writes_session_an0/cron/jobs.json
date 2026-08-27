@@ -1,0 +1,10 @@
+[
+  {
+    "id": "b4825eef",
+    "name": "日报",
+    "prompt": "写今日日报",
+    "interval_minutes": 60,
+    "last_run": 1787747729.1342125,
+    "enabled": true
+  }
+]

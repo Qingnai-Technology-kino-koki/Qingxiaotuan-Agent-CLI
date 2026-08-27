@@ -1,0 +1,4 @@
+mode:
+  default: yolo
+  yolo_require_confirm:
+  - delete_file

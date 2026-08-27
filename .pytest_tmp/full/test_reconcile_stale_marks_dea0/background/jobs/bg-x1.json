@@ -1,0 +1,16 @@
+{
+  "job_id": "bg-x1",
+  "task": "task",
+  "workspace": "E:\\Qingxiaotuan Agent CLI\\.pytest_tmp\\full\\test_reconcile_stale_marks_dea0",
+  "profile": "default",
+  "status": "failed",
+  "pid": 999999,
+  "started_at": 1787745281.246848,
+  "updated_at": 1787745281.2957919,
+  "heartbeat": 1787745081.2690258,
+  "turns": 0,
+  "result": "",
+  "error": "worker 心跳超时 (>10s)",
+  "session_file": null,
+  "yolo": false
+}

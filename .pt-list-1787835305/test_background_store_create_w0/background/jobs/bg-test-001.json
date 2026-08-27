@@ -1,0 +1,16 @@
+{
+  "job_id": "bg-test-001",
+  "task": "测试任务",
+  "workspace": "E:\\Qingxiaotuan Agent CLI\\.pt-list-1787835305\\test_background_store_create_w0",
+  "profile": "default",
+  "status": "running",
+  "pid": 12345,
+  "started_at": 1787835321.9169424,
+  "updated_at": 1787835321.9319189,
+  "heartbeat": 1787835321.9169424,
+  "turns": 0,
+  "result": "",
+  "error": null,
+  "session_file": null,
+  "yolo": false
+}

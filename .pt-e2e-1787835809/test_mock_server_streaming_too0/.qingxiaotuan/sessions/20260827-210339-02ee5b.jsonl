@@ -1,0 +1,5 @@
+{"ts": 1787835819.846633, "type": "user", "message": {"role": "user", "content": "读 data.json"}}
+{"ts": 1787835819.8649197, "type": "assistant", "message": {"role": "assistant", "content": "", "tool_calls": [{"id": "call_9", "function": {"name": "read_file", "arguments": "{\"path\": \"data.json\"}"}}]}}
+{"ts": 1787835819.8679194, "type": "tool_call", "name": "read_file", "arguments": "{\"path\": \"data.json\"}"}
+{"ts": 1787835819.8749468, "type": "tool", "message": {"role": "tool", "tool_call_id": "call_9", "name": "read_file", "content": "# E:\\Qingxiaotuan Agent CLI\\.pt-e2e-1787835809\\test_mock_server_streaming_too0\\data.json\n{\"ok\": true}", "status": "ok"}, "name": "read_file", "content": "# E:\\Qingxiaotuan Agent CLI\\.pt-e2e-1787835809\\test_mock_server_streaming_too0\\data.json\n{\"ok\": true}"}
+{"ts": 1787835819.8854568, "type": "assistant", "message": {"role": "assistant", "content": "data.json 内容: {\"ok\": true}", "tool_calls": []}}

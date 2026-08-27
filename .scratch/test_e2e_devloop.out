@@ -1,0 +1,7 @@
+.F                                                                       [100%]
+================================== FAILURES ===================================
+E   TypeError: 'NoneType' object is not iterable
+E:\Qingxiaotuan Agent CLI\qingxiaotuan\core\agent.py:54: TypeError: 'NoneType' object is not iterable
+=========================== short test summary info ===========================
+FAILED tests/test_e2e_devloop.py::test_e2e_context_preserves_codebase_map - TypeError: 'NoneType' object is not iterable
+1 failed, 1 passed in 4.10s

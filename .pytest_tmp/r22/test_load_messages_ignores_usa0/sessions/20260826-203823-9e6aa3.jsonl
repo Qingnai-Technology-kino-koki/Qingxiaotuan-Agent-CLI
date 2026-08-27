@@ -1,0 +1,2 @@
+{"ts": 1787747903.9545906, "type": "user", "message": {"role": "user", "content": "你好"}}
+{"ts": 1787747903.961459, "type": "usage", "turn": 0, "delta": {"prompt_tokens": 10}, "provider": "x", "model": "y", "cost_usd": 0.0}

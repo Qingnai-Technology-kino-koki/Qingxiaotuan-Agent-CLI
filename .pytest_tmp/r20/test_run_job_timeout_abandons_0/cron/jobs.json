@@ -1,0 +1,10 @@
+[
+  {
+    "id": "2dbde717",
+    "name": "慢任务",
+    "prompt": "会卡住",
+    "interval_minutes": 60,
+    "last_run": 1787746819.7738924,
+    "enabled": true
+  }
+]

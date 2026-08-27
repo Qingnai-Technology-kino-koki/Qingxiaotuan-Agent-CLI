@@ -1,0 +1,22 @@
+{"ts": 1787834680.6707761, "type": "user", "message": {"role": "user", "content": "写初版"}}
+{"ts": 1787834680.681631, "type": "assistant", "message": {"role": "assistant", "content": "", "tool_calls": [{"id": "c1", "function": {"name": "write_file", "arguments": "{\"path\": \"doc.txt\", \"content\": \"v1\"}"}}]}}
+{"ts": 1787834680.681631, "type": "tool_call", "name": "write_file", "arguments": "{\"path\": \"doc.txt\", \"content\": \"v1\"}"}
+{"ts": 1787834680.7176428, "type": "tool", "message": {"role": "tool", "tool_call_id": "c1", "name": "write_file", "content": "已写入 E:\\Qingxiaotuan Agent CLI\\.pt-full-1787834663\\test_checkpoint_roundtrip_in_a0\\doc.txt (2 字符)", "status": "ok"}, "name": "write_file", "content": "已写入 E:\\Qingxiaotuan Agent CLI\\.pt-full-1787834663\\test_checkpoint_roundtrip_in_a0\\doc.txt (2 字符)"}
+{"ts": 1787834680.7206407, "type": "assistant", "message": {"role": "assistant", "content": "初版写好", "tool_calls": []}}
+{"ts": 1787834680.7299259, "type": "user", "message": {"role": "user", "content": "打检查点"}}
+{"ts": 1787834680.7313206, "type": "assistant", "message": {"role": "assistant", "content": "", "tool_calls": [{"id": "c2", "function": {"name": "checkpoint", "arguments": "{\"action\":\"save\",\"note\":\"改动前\"}"}}]}}
+{"ts": 1787834680.7313206, "type": "tool_call", "name": "checkpoint", "arguments": "{\"action\":\"save\",\"note\":\"改动前\"}"}
+{"ts": 1787834680.7313206, "type": "tool", "message": {"role": "tool", "tool_call_id": "c2", "name": "checkpoint", "content": "检查点 cp1 已保存 (对话 7 条, 账本标记 1, 备注: 改动前)", "status": "ok"}, "name": "checkpoint", "content": "检查点 cp1 已保存 (对话 7 条, 账本标记 1, 备注: 改动前)"}
+{"ts": 1787834680.7436092, "type": "assistant", "message": {"role": "assistant", "content": "已保存", "tool_calls": []}}
+{"ts": 1787834680.7444344, "type": "user", "message": {"role": "user", "content": "改坏它"}}
+{"ts": 1787834680.7560236, "type": "assistant", "message": {"role": "assistant", "content": "", "tool_calls": [{"id": "c3", "function": {"name": "write_file", "arguments": "{\"path\": \"doc.txt\", \"content\": \"v2-broken\"}"}}, {"id": "c4", "function": {"name": "write_file", "arguments": "{\"path\": \"extra.txt\", \"content\": \"junk\"}"}}]}}
+{"ts": 1787834680.7560236, "type": "tool_call", "name": "write_file", "arguments": "{\"path\": \"doc.txt\", \"content\": \"v2-broken\"}"}
+{"ts": 1787834680.7823598, "type": "tool", "message": {"role": "tool", "tool_call_id": "c3", "name": "write_file", "content": "已写入 E:\\Qingxiaotuan Agent CLI\\.pt-full-1787834663\\test_checkpoint_roundtrip_in_a0\\doc.txt (9 字符)", "status": "ok"}, "name": "write_file", "content": "已写入 E:\\Qingxiaotuan Agent CLI\\.pt-full-1787834663\\test_checkpoint_roundtrip_in_a0\\doc.txt (9 字符)"}
+{"ts": 1787834680.7823598, "type": "tool_call", "name": "write_file", "arguments": "{\"path\": \"extra.txt\", \"content\": \"junk\"}"}
+{"ts": 1787834680.7913733, "type": "tool", "message": {"role": "tool", "tool_call_id": "c4", "name": "write_file", "content": "已写入 E:\\Qingxiaotuan Agent CLI\\.pt-full-1787834663\\test_checkpoint_roundtrip_in_a0\\extra.txt (4 字符)", "status": "ok"}, "name": "write_file", "content": "已写入 E:\\Qingxiaotuan Agent CLI\\.pt-full-1787834663\\test_checkpoint_roundtrip_in_a0\\extra.txt (4 字符)"}
+{"ts": 1787834680.8055863, "type": "assistant", "message": {"role": "assistant", "content": "改完了", "tool_calls": []}}
+{"ts": 1787834680.8152559, "type": "user", "message": {"role": "user", "content": "回滚"}}
+{"ts": 1787834680.817255, "type": "assistant", "message": {"role": "assistant", "content": "", "tool_calls": [{"id": "c5", "function": {"name": "checkpoint", "arguments": "{\"action\":\"restore\"}"}}]}}
+{"ts": 1787834680.8192556, "type": "tool_call", "name": "checkpoint", "arguments": "{\"action\":\"restore\"}"}
+{"ts": 1787834680.8266594, "type": "tool", "message": {"role": "tool", "tool_call_id": "c5", "name": "checkpoint", "content": "已恢复到检查点 cp1: 文件回滚 2 项; 对话截回 6 条", "status": "ok"}, "name": "checkpoint", "content": "已恢复到检查点 cp1: 文件回滚 2 项; 对话截回 6 条"}
+{"ts": 1787834680.8266594, "type": "assistant", "message": {"role": "assistant", "content": "已回滚", "tool_calls": []}}

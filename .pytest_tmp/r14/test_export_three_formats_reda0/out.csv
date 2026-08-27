@@ -1,0 +1,2 @@
+seq,ts,iso,type,payload_json
+1,1787740210.926343,2026-08-26T10:30:10.926343+00:00,tool.executed,"{""name"": ""run_shell"", ""api_key"": ""***""}"

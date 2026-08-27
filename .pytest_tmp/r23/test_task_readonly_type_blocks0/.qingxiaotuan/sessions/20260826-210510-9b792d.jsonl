@@ -1,0 +1,10 @@
+{"ts": 1787749510.512151, "type": "user", "message": {"role": "user", "content": "找入口"}}
+{"ts": 1787749510.5215364, "type": "assistant", "message": {"role": "assistant", "content": "", "tool_calls": [{"id": "c1", "function": {"name": "write_file", "arguments": "{\"path\": \"t.txt\", \"content\": \"x\"}"}}]}}
+{"ts": 1787749510.5282364, "type": "tool_call", "name": "write_file", "arguments": "{\"path\": \"t.txt\", \"content\": \"x\"}"}
+{"ts": 1787749510.5339968, "type": "tool", "message": {"role": "tool", "tool_call_id": "c1", "name": "write_file", "content": "[已禁用] 工具 write_file 已被 exclude_tools 排除"}, "name": "write_file", "content": "[已禁用] 工具 write_file 已被 exclude_tools 排除"}
+{"ts": 1787749510.5410473, "type": "assistant", "message": {"role": "assistant", "content": "观察: [已禁用] 工具 write_file 已被 exclude_tools 排除", "tool_calls": []}}
+{"ts": 1787749510.5906453, "type": "user", "message": {"role": "user", "content": "写文件"}}
+{"ts": 1787749510.5985813, "type": "assistant", "message": {"role": "assistant", "content": "", "tool_calls": [{"id": "c3", "function": {"name": "write_file", "arguments": "{\"path\": \"t.txt\", \"content\": \"x\"}"}}]}}
+{"ts": 1787749510.6020234, "type": "tool_call", "name": "write_file", "arguments": "{\"path\": \"t.txt\", \"content\": \"x\"}"}
+{"ts": 1787749510.623052, "type": "tool", "message": {"role": "tool", "tool_call_id": "c3", "name": "write_file", "content": "已写入 E:\\Qingxiaotuan Agent CLI\\.pytest_tmp\\r23\\test_task_readonly_type_blocks0\\t.txt (1 字符)"}, "name": "write_file", "content": "已写入 E:\\Qingxiaotuan Agent CLI\\.pytest_tmp\\r23\\test_task_readonly_type_blocks0\\t.txt (1 字符)"}
+{"ts": 1787749510.6273053, "type": "assistant", "message": {"role": "assistant", "content": "观察: 已写入 E:\\Qingxiaotuan Agent CLI\\.pytest_tmp\\r23\\test_task_readonly_type_blocks0\\t.txt (1 字符)", "tool_calls": []}}

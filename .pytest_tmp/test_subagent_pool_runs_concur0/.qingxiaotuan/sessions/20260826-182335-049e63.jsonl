@@ -1,0 +1,9 @@
+{"ts": 1787739815.475787, "type": "user", "message": {"role": "user", "content": "子任务1"}}
+{"ts": 1787739815.4800043, "type": "user", "message": {"role": "user", "content": "子任务0"}}
+{"ts": 1787739815.4822092, "type": "assistant", "message": {"role": "assistant", "content": "回声: 子任务1", "tool_calls": []}}
+{"ts": 1787739815.4869752, "type": "assistant", "message": {"role": "assistant", "content": "回声: 子任务2", "tool_calls": []}}
+{"ts": 1787739815.4875765, "type": "assistant", "message": {"role": "assistant", "content": "回声: 子任务0", "tool_calls": []}}
+{"ts": 1787739815.5190008, "type": "user", "message": {"role": "user", "content": "子任务4"}}
+{"ts": 1787739815.5196419, "type": "user", "message": {"role": "user", "content": "子任务3"}}
+{"ts": 1787739815.5228317, "type": "assistant", "message": {"role": "assistant", "content": "回声: 子任务4", "tool_calls": []}}
+{"ts": 1787739815.5249903, "type": "assistant", "message": {"role": "assistant", "content": "回声: 子任务3", "tool_calls": []}}

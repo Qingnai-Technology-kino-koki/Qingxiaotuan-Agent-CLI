@@ -1,0 +1,16 @@
+{
+  "job_id": "bg-q2",
+  "task": "task",
+  "workspace": "E:\\Qingxiaotuan Agent CLI\\.pt-list2-1787835438\\test_recoverable_returns_queue0",
+  "profile": "default",
+  "status": "running",
+  "pid": 22044,
+  "started_at": 1787835446.8526342,
+  "updated_at": 1787835446.8839455,
+  "heartbeat": 1787835446.8839455,
+  "turns": 0,
+  "result": "",
+  "error": null,
+  "session_file": null,
+  "yolo": false
+}
