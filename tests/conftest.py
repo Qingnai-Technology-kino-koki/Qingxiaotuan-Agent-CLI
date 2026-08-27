@@ -9,6 +9,23 @@ import pytest
 
 sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
 
+# ------------------------------------------------------------------ 依赖健康检查
+# 缺少 httpx/rich/yaml 会导致 24+ 个测试模块 collection error,
+# 这里统一拦截并给出友好提示。
+_missing = []
+for _mod in ("httpx", "rich", "yaml"):
+    try:
+        __import__(_mod)
+    except (ImportError, TypeError):
+        _missing.append(_mod)
+if _missing:
+    pytest.exit(
+        f"缺少测试依赖: {', '.join(_missing)}\n"
+        "请先激活虚拟环境 (Windows: .venv\Scripts\activate) 再运行测试,\n"
+        "或执行: pip install httpx rich pyyaml",
+        returncode=1,
+    )
+
 from qingxiaotuan.core.ipc_client import close_all_managers
 
 
@@ -28,6 +45,22 @@ def qxt_home(tmp_path, monkeypatch):
     home = tmp_path / ".qingxiaotuan"
     monkeypatch.setenv("QXT_HOME", str(home))
     yield home
+
+
+@pytest.fixture(autouse=True)
+def _isolated_environ(tmp_path, monkeypatch):
+    """全局环境隔离: 让本机测试与 CI 行为一致。
+
+    - QXT_HOME 默认指向临时目录: config.loader 的 load_dotenv 不再读取真实
+      用户目录下的 ~/.qingxiaotuan/.env, 本机凭据不会泄漏进测试进程;
+    - 清空所有 *API_KEY* 变量: 路由/供应商可用性只由各测试显式注入决定;
+    - monkeypatch teardown 自动还原, 测试中途被灌进 os.environ 的变量一并回滚。
+    需要特定变量的测试用 monkeypatch.setenv 自行覆盖即可。
+    """
+    monkeypatch.setenv("QXT_HOME", str(tmp_path / ".qingxiaotuan"))
+    for key in [k for k in os.environ if "API_KEY" in k.upper()]:
+        monkeypatch.delenv(key, raising=False)
+    yield
 
 
 # ---------------------------------------------------------------------------

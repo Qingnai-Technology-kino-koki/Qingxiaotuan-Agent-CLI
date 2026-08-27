@@ -12,7 +12,9 @@
 缓存命中关键: 本模块的 build_system_prompt 不接收 task_hint —— 见 agent._build_system。
 
 Claude Code 2.1.214 对标:
-- QXT.md 项目级指令发现 (对标 CLAUDE.md): 自动发现并合并工作区内的 QXT.md。
+- QXT.md 项目级指令发现 (对标 CLAUDE.md): 自动发现并合并工作区内的 QXT.md,
+  并支持分层记忆 —— 用户全局层 (~/.agents/AGENTS.md, 对标 ~/.claude/CLAUDE.md)
+  → 项目层 (工作区到 git 仓库根沿途各级 QXT.md / AGENTS.md)。
 - 系统上下文注入: OS / Shell / Python 版本 / Git 状态, 动态注入系统提示。
 """
 
@@ -26,30 +28,87 @@ import sys
 from pathlib import Path
 from typing import List, Optional
 
-
-# 项目级指令文件名 (对标 Claude Code 的 CLAUDE.md)
-_INSTRUCTION_FILES = ["QXT.md", "CLAUDE.md", ".qxt.md"]
+from ..i18n import LANGUAGES, normalize_language
 
 
-def _discover_project_instructions(workspace: str) -> str:
-    """发现并合并项目级指令文件 (对标 Claude Code 的 CLAUDE.md 发现)。
+# 项目级指令文件名 (对标 Claude Code 的 CLAUDE.md; AGENTS.md 为社区通用约定,
+# 优先级: 自家格式 > 社区标准 > 遗留兼容)
+_INSTRUCTION_FILES = ["QXT.md", "AGENTS.md", "CLAUDE.md", ".qxt.md"]
 
-    搜索顺序: QXT.md > CLAUDE.md > .qxt.md (工作区根目录)
-    多个文件按优先级合并, 保证项目特定指令覆盖全局。
+# 用户级全局指令 (社区标准位置)。模块级变量便于测试 monkeypatch 隔离,
+# 生产环境始终指向真实用户目录。
+_USER_GLOBAL_AGENTS = Path.home() / ".agents" / "AGENTS.md"
+
+
+def _read_instruction(path: Path) -> str:
+    """读取单个指令文件内容; 不存在/为空/IO 失败一律返回空串。"""
+    try:
+        if path.exists() and path.is_file():
+            return path.read_text(encoding="utf-8", errors="replace").strip()
+    except OSError:
+        pass
+    return ""
+
+
+def _is_repo_root(path: Path) -> bool:
+    """判断某目录是否为 git 仓库根 (存在 .git)。独立小函数便于测试 monkeypatch。"""
+    return (path / ".git").exists()
+
+
+def _project_chain(workspace: Path) -> List[Path]:
+    """工作区 → 最近 git 仓库根的目录链 (含两端, 由远及近排列)。
+
+    向上遇到 git 仓库根即止 —— 项目层指令绝不飘出仓库边界;
+    工作区自身不在任何 git 仓库内时只返回 [workspace]。
     """
+    cur = workspace
+    chain: List[Path] = [cur]
+    found_git = _is_repo_root(cur)
+    # 盘符根的 parent 是它自身, 用 cur != cur.parent 防死循环
+    while not found_git and cur != cur.parent:
+        cur = cur.parent
+        chain.append(cur)
+        found_git = _is_repo_root(cur)
+    if not found_git:
+        return [workspace]
+    chain.reverse()
+    return chain
+
+
+def _discover_project_instructions(workspace: str, home: Optional[Path] = None) -> str:
+    """发现并合并分层项目级指令 (对标 Claude Code 的 CLAUDE.md 分层记忆)。
+
+    三层, 从全局到局部依次注入 (越靠近工作区越后出现, 语义上越具体):
+    1. 用户全局层: <qxt_home>/AGENTS.md 与 ~/.agents/AGENTS.md;
+    2. 项目祖先层: 从工作区沿父目录向上到最近的 git 仓库根 (不含仓库外),
+       逐级收录候选指令文件;
+    3. 工作区根: 按候选名优先级收录 (QXT.md > AGENTS.md > CLAUDE.md > .qxt.md)。
+
+    同一环境下多次调用产出逐字节一致 (prompt cache 友好)。
+    """
+    parts: List[str] = []
+
+    # 1. 用户全局层 (两个位置都收, 均带绝对路径标注以便区分来源)
+    global_paths = []
+    if home is not None:
+        global_paths.append(home / "AGENTS.md")
+    global_paths.append(_USER_GLOBAL_AGENTS)
+    for gpath in global_paths:
+        content = _read_instruction(gpath)
+        if content:
+            parts.append(f"# 全局指令 ({gpath})\n{content}")
+
+    # 2+3. 项目层: 由远及近逐级收录
     ws = Path(workspace)
     if not ws.is_dir():
-        return ""
-    parts: List[str] = []
-    for name in _INSTRUCTION_FILES:
-        path = ws / name
-        if path.exists() and path.is_file():
-            try:
-                content = path.read_text(encoding="utf-8", errors="replace").strip()
-                if content:
-                    parts.append(f"# 项目指令 ({name})\n{content}")
-            except OSError:
-                pass
+        return "\n\n".join(parts)
+    for directory in _project_chain(ws):
+        depth = len(ws.relative_to(directory).parts)  # 根=0, 直接父=1, ...
+        prefix = "../" * depth
+        for name in _INSTRUCTION_FILES:
+            content = _read_instruction(directory / name)
+            if content:
+                parts.append(f"# 项目指令 ({prefix}{name})\n{content}")
     return "\n\n".join(parts)
 
 
@@ -130,6 +189,8 @@ def build_system_prompt(
     skill_manager=None,
     skill_limit: int = 3,
     codebase_map: str = "",
+    reply_language: str = "zh-CN",
+    output_style: str = "default",
 ) -> str:
     """组装「绝对稳定」的系统提示 —— 不含任何随任务变化的语义召回。
 
@@ -159,8 +220,9 @@ def build_system_prompt(
     if git_ctx:
         parts.append(f"Git: {git_ctx}")
 
-    # 4. QXT.md 项目级指令 (对标 Claude Code 的 CLAUDE.md 发现)
-    project_instructions = _discover_project_instructions(workspace)
+    # 4. 分层项目级指令 (对标 Claude Code 的 CLAUDE.md 分层记忆:
+    #    用户全局层 + git 仓库内祖先层 + 工作区根)
+    project_instructions = _discover_project_instructions(workspace, home=home)
     if project_instructions:
         parts.append(project_instructions)
 
@@ -190,20 +252,88 @@ def build_system_prompt(
         if rendered:
             parts.append(rendered)
 
-    # 9. 行为准则 (极简, 每条有信息量)
-    parts.append(
-        "准则:\n"
-        "1. 思考→拆解→调工具→观察→继续, 直到完成。\n"
-        "2. 改代码前先摸清结构 (codebase_map/find_symbol/read_file/git_status), 注意跨文件依赖。\n"
-        "3. 改完自测: 有测试就 run_tests, 红了自己修到绿。\n"
-        "4. 值得长期记的事实用 memory_write 存。\n"
-        "5. 可复用方法用 skill_save 蒸馏; 有相似技能先复用改进。\n"
-        "6. 中文回答, 简洁直接; 不确定如实说。\n"
-        "7. 破坏性操作前必须确认 (YOLO 模式除外)。\n"
-        "8. mcp__ 前缀工具来自外部 MCP Server, 像本地工具一样调用。\n"
-        "9. plan 模式下只分析不修改文件, 等用户确认后再执行。"
-    )
+    # 9. 行为准则 (极简, 每条有信息量); 第 7 条随界面语言变化
+    rules = [
+        "1. 思考→拆解→调工具→观察→继续, 直到完成。",
+        "2. 改代码前先摸清结构 (codebase_map/find_symbol/read_file/git_status), 注意跨文件依赖。",
+        "3. 所有代码引用必须用 path/to/file.ext:line 精确格式, 便于开发者跳转 (可用 open_file 打开)。",
+        "4. 改完自测: 有测试就 run_tests, 红了自己修到绿。",
+        "5. 值得长期记的事实用 memory_write 存。",
+        "6. 可复用方法用 skill_save 蒸馏; 有相似技能先复用改进。",
+        _reply_rule(reply_language),
+        "8. 破坏性操作前必须确认 (YOLO 模式除外)。",
+        "9. mcp__ 前缀工具来自外部 MCP Server, 像本地工具一样调用。",
+        "10. plan 模式下只分析不修改文件, 等用户确认后再执行。",
+        "11. git 变更操作 (commit/push/reset/rebase) 必须用户明确要求才做, 每次都要确认。",
+        "12. 最小改动: 只动任务涉及的文件, 不顺手重构/重排版/批量改名。",
+    ]
+    parts.append("准则:\n" + "\n".join(rules))
+
+    # 10. 输出风格 (对标 Claude Code 的 Output Styles): default 不注入任何内容,
+    #     保证 system 前缀逐字节不变 (prompt cache 兼容)。
+    if output_style:
+        style_text = resolve_output_style(output_style, workspace)
+        if style_text:
+            parts.append("## 输出风格\n" + style_text)
     return "\n\n".join(parts)
+
+
+# 内置输出风格文案 (对标 Claude Code 2.1.237 新增的内置 Output Styles)
+_BUILTIN_OUTPUT_STYLES = {
+    "concise": (
+        "用尽可能少的文字回答: 直接给结论与关键代码/命令, 不铺垫不复述问题, "
+        "不写总结性客套。解释仅在被追问时展开。"
+    ),
+    "explanatory": (
+        "回答时穿插教学式说明: 在给出结论之外, 解释关键设计取舍与原理, "
+        "帮助用户理解代码为什么这样写, 而不只是改好了。"
+    ),
+    "learning": (
+        "协作学习模式: 先给出小而清晰的步骤, 留一部分实现 (标注 TODO(human)) "
+        "让用户亲手补全, 再对其实现给出反馈; 避免一次性给全部代码。"
+    ),
+}
+
+
+def resolve_output_style(output_style: str, workspace: str) -> str:
+    """解析输出风格为提示词文本段。
+
+    - "" / "default": 返回空 (不注入, 保持 system 前缀稳定);
+    - concise / explanatory / learning: 返回内置中文文案;
+    - 其他值视为自定义风格名或路径: 优先读 <workspace>/<值>, 否则读
+      <workspace>/.qxt/output-style.md; 都不存在返回空。
+    """
+    style = (output_style or "").strip()
+    if not style or style == "default":
+        return ""
+    builtin = _BUILTIN_OUTPUT_STYLES.get(style.lower())
+    if builtin:
+        return builtin
+    ws = Path(workspace)
+    candidates = [ws / style, ws / ".qxt" / "output-style.md"]
+    for path in candidates:
+        try:
+            if path.is_file():
+                text = path.read_text(encoding="utf-8").strip()
+                if text:
+                    return text
+        except OSError:
+            continue
+    return ""
+
+
+def _reply_rule(reply_language: str = "zh-CN") -> str:
+    """行为准则第 7 条 —— 要求模型按用户选择的界面语言回复。
+
+    zh-CN 保持历史原文逐字节不变 (保护既有 prompt cache 与测试断言);
+    其他语言注入对应语言名, 让 Agent 对话跟随 UI 语言。
+    """
+    code = normalize_language(reply_language or "")
+    if code and code != "zh-CN":
+        info = LANGUAGES[code]
+        return (f"7. Always reply in {info['english']} ({info['native']}); "
+                "be concise and direct; admit uncertainty honestly.")
+    return "7. 中文回答, 简洁直接; 不确定如实说。"
 
 
 def build_task_context(
@@ -214,18 +344,25 @@ def build_task_context(
 ) -> str:
     """生成「随任务变化的上下文」, 贴在首条 user 消息前 (不进 system, 不破坏缓存)。
 
-    包含: 与当前任务相关的长期记忆语义召回 + 相关技能召回。
-    无相关内容时返回空串, 调用方据此决定是否追加。
+    包含: 与当前任务相关的记忆召回 (关键词命中 + 近 24h, 走 recall_context 合并去重)
+    + 相关技能召回。无相关内容时返回空串, 调用方据此决定是否追加。
     """
     blocks: List[str] = []
-    if memory_store and hasattr(memory_store, "search") and task_hint:
+    if memory_store and task_hint:
         try:
-            hits = memory_store.search(task_hint, limit=5)
+            if hasattr(memory_store, "recall_context"):
+                # 增强召回 (MemoryStore): 关键词全文命中 + 近 24h 记忆, 已合并去重
+                recalled = memory_store.recall_context(task_hint, limit=5)
+                if recalled:
+                    blocks.append(recalled)
+            elif hasattr(memory_store, "search"):
+                # 兜底: 仅实现基础全文检索的存储后端
+                hits = memory_store.search(task_hint, limit=5)
+                if hits:
+                    mem = "\n".join(f"- {h['content']}" for h in hits)
+                    blocks.append(f"[与任务相关的记忆]\n{mem}")
         except Exception:
-            hits = []
-        if hits:
-            mem = "\n".join(f"- {h['content']}" for h in hits)
-            blocks.append(f"[与任务相关的记忆]\n{mem}")
+            pass
     if skill_manager and task_hint:
         try:
             skills = skill_manager.search(task_hint, limit=skill_limit)

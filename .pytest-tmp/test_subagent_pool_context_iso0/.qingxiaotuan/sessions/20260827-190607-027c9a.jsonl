@@ -1,0 +1,4 @@
+{"ts": 1787828767.7501314, "type": "user", "message": {"role": "user", "content": "只做A的事"}}
+{"ts": 1787828767.7501314, "type": "user", "message": {"role": "user", "content": "只做B的事"}}
+{"ts": 1787828767.7556543, "type": "assistant", "message": {"role": "assistant", "content": "回声: 只做A的事", "tool_calls": []}}
+{"ts": 1787828767.7593715, "type": "assistant", "message": {"role": "assistant", "content": "回声: 只做B的事", "tool_calls": []}}

@@ -16,7 +16,7 @@ AVAIL = set(ExternalEngineManager().list_engines())
 HAVE = "json" in AVAIL
 
 
-@pytest.mark.skipif(not HAVE, reason="json 引擎未编译/不可用")
+@pytest.mark.skipif(not HAVE, reason="json 引擎不可用")
 def test_pointer_nested():
     m = ExternalEngineManager()
     doc = {"a": {"b": [10, 20, {"c": "hi"}]}}
@@ -24,7 +24,7 @@ def test_pointer_nested():
     assert r["value"] == "hi"
 
 
-@pytest.mark.skipif(not HAVE, reason="json 引擎未编译/不可用")
+@pytest.mark.skipif(not HAVE, reason="json 引擎不可用")
 def test_pointer_not_found():
     m = ExternalEngineManager()
     doc = {"x": 1}
@@ -32,7 +32,7 @@ def test_pointer_not_found():
         m.call("json", "pointer_get", {"doc": doc, "pointer": "/nope"})
 
 
-@pytest.mark.skipif(not HAVE, reason="json 引擎未编译/不可用")
+@pytest.mark.skipif(not HAVE, reason="json 引擎不可用")
 def test_diff_one_change():
     m = ExternalEngineManager()
     a = {"x": 1, "y": 2}
@@ -44,7 +44,7 @@ def test_diff_one_change():
     assert ch["path"] == "/y"
 
 
-@pytest.mark.skipif(not HAVE, reason="json 引擎未编译/不可用")
+@pytest.mark.skipif(not HAVE, reason="json 引擎不可用")
 def test_merge_overlay():
     m = ExternalEngineManager()
     base = {"k1": 1, "k2": {"n": 2}}
@@ -56,7 +56,7 @@ def test_merge_overlay():
     assert merged["k3"] == 3
 
 
-@pytest.mark.skipif(not HAVE, reason="json 引擎未编译/不可用")
+@pytest.mark.skipif(not HAVE, reason="json 引擎不可用")
 def test_kernel_tools_wired():
     from qingxiaotuan.core.kernel import Kernel
     from qingxiaotuan.config.loader import Config

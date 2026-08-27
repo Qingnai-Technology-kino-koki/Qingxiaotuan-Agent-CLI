@@ -1,0 +1,1 @@
+{"hook_event_name": "PostToolUse", "tool_name": "read_file", "tool_input": {"path": "/x"}, "tool_result": {"status": "ok", "content": "data", "error_type": null}}

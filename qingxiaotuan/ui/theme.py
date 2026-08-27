@@ -1,50 +1,77 @@
 """统一主题: repl 与 fullscreen 共用同一套配色与状态图标。
 
-设计原则: hex 色为唯一事实来源 (与 mascot._PALETTE 同源), 再派生两套表达:
+配色采用 Kimi Code CLI 官方 dark 主题 token (moonshotai.github.io/kimi-code):
+primary=#4FA8FF / accent=#5BC0BE / text=#E0E0E0 / textDim=#888888 /
+textMuted=#6B6B6B / border=#5A5A5A / success=#4EC87E / warning=#E8A838 /
+error=#E85454 / roleUser=#FFCB6B / shellMode=#BD93F9。
+
+设计原则 (Kimi Code 样式, 唯一强调色):
+  * 只保留 #4FA8FF (primary 浅蓝) 作为唯一强调色, 用于标题/徽章/提示符;
+  * 其余全部无样式 (无颜色/无加粗/无下划线), 彻底无高亮;
   * C         -> Rich 颜色名 (repl.py 用)
   * PT_STYLE  -> prompt_toolkit 样式表 (fullscreen.py 用)
 """
 
 from __future__ import annotations
 
-# ---------------------------------------------------------------- 主色 (hex)
-ACCENT = "#2DD4BF"      # 莫奈青 (主强调)
-ACCENT_BRIGHT = "#5EEAD4"
-BLUE = "#38BDF8"        # 思考蓝
-TEXT = "#E8EEF2"        # 正文
-DIM = "#8AA4B8"         # 次级信息
-MUTED = "#5B7285"       # 弱化信息
-OK = "#34D399"
-WARN = "#FBBF24"
-ERR = "#F87171"
-BOX = "#4B6A80"         # 边框
-PRIMARY = "#63D7C5"     # 标题
+# 唯一强调色: Kimi Code primary 浅蓝 (其余颜色一律不用)
+ACCENT_COLOR = "#4FA8FF"
 
-# ---------------------------------------------------------------- Rich 颜色名
+# ---------------------------------------------------------------- Rich 颜色名 (仅 primary/accent 用浅蓝, 其余无样式)
 C = {
-    "accent": "cyan",
-    "text": "bright_white",
-    "dim": "grey66",
-    "muted": "grey50",
-    "ok": "green",
-    "warn": "yellow",
-    "err": "red",
-    "box": "grey46",
-    "primary": "bright_cyan",
+    "accent": ACCENT_COLOR,
+    "primary": ACCENT_COLOR,
+    "text": "",
+    "dim": "",
+    "muted": "",
+    "ok": "",
+    "warn": "",
+    "err": "",
+    "box": "",
 }
 
-# ---------------------------------------------------------------- prompt_toolkit 样式
+# ---------------------------------------------------------------- prompt_toolkit 样式 (仅标题/徽章/提示符用浅蓝, 其余无样式)
 PT_STYLE = {
-    "status": "bg:#16324f #d9f0ff",
-    "title": "bold #63d7c5",
-    "panel": "#8aa4b8",
-    "log": "#e8eef2",
-    "input": "#f5f7f8",
-    "bottom-toolbar": "#8aa4b8",
-    "context-ok": "#34d399",
-    "context-warn": "#fbbf24",
-    "context-err": "#f87171",
+    "status": "",
+    "title": ACCENT_COLOR,
+    "panel": "",
+    "log": "",
+    "input": "",
+    "bottom-toolbar": "",
+    "badge": ACCENT_COLOR,
+    "badge-plan": ACCENT_COLOR,
+    "badge-yolo": ACCENT_COLOR,
+    "prompt": ACCENT_COLOR,
+    "text-area.prompt": ACCENT_COLOR,
+    "context-ok": "",
+    "context-warn": "",
+    "context-err": "",
 }
+
+
+# prompt_toolkit 样式解析有继承机制 (completion-menu.completion 会回退到父类
+# completion-menu), 空字符串 "" 不会重置属性, 必须显式重置全部属性。
+_PT_RESET = "fg:default bg:default nobold noitalic nounderline nostrike noreverse noblink nohidden"
+
+
+def blank_pt_style() -> dict:
+    """生成覆盖 prompt_toolkit 全部默认样式的样式表。
+
+    标题/徽章/提示符保留浅蓝强调色 (Kimi Code 唯一强调色), 其余全部显式
+    重置为无样式 (彻底无高亮)。prompt_toolkit 会合并自带默认样式 (补全菜单/
+    滚动条/光标列等带颜色), 仅置空自定义键不够, 需把默认样式表的所有规则键
+    也显式重置。
+    """
+    base = {k: _PT_RESET for k in PT_STYLE}
+    for k in ("title", "badge", "badge-plan", "badge-yolo", "prompt", "text-area.prompt"):
+        base[k] = ACCENT_COLOR
+    try:
+        from prompt_toolkit.styles.defaults import default_ui_style
+        for cls, _ in default_ui_style().style_rules:
+            base.setdefault(cls, _PT_RESET)
+    except Exception:  # prompt_toolkit 不可用时退化为自定义键
+        pass
+    return base
 
 # ---------------------------------------------------------------- 吉祥物状态图标
 MASCOT_ICONS = {

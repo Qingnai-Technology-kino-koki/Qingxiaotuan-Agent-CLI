@@ -1,0 +1,2 @@
+{"seq": 1, "ts": 1787828507.3182385, "iso": "2026-08-27T11:01:47.318238+00:00", "type": "audit.ready", "payload": {"type": "audit.ready", "enabled": true, "persist": true}}
+{"seq": 2, "ts": 1787828507.3211837, "iso": "2026-08-27T11:01:47.321184+00:00", "type": "tool.executed", "payload": {"type": "tool.executed", "name": "run_shell", "status": "ok", "token": "***"}}

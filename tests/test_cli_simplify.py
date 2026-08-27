@@ -58,10 +58,11 @@ def test_model_no_subcommand_triggers_interactive_chooser(tmp_path):
             node = node.setdefault(k, {})
         node[keys[-1]] = value
     with mock.patch.object(commands.Config, "set_user", fake_set_user), \
-         mock.patch("builtins.input", side_effect=["1", ""]):  # 选 deepseek, 模型用默认
+         mock.patch("builtins.input", side_effect=["1", "", "", ""]):  # 分类/供应商/模型/API Key 均用默认
         rc = commands.cmd_model(build_parser().parse_args(["model"]))
     assert rc == 0
     assert written.get("model.provider") == "deepseek"
+    assert written.get("model.model") == "deepseek-chat"
     assert written.get("model.base_url") == PROVIDER_PRESETS["deepseek"]["base_url"]
     assert written.get("model.api_key_env") == PROVIDER_PRESETS["deepseek"]["api_key_env"]
 
@@ -82,3 +83,23 @@ def test_model_set_uses_explicit_values():
     assert written["model.provider"] == "openai"
     assert written["model.model"] == "gpt-4o"
     assert written["model.base_url"] == "https://api.openai.com/v1"
+
+
+def test_model_set_autofills_preset_base_url_and_key_env():
+    """qxt model set <已知供应商> <模型> 未给 base_url/api_key_env 时应从预设自动补全。"""
+    written = {}
+    def fake_set_user(self, dotted, value):
+        written[dotted] = value
+        keys = dotted.split(".")
+        node = self.data
+        for k in keys[:-1]:
+            node = node.setdefault(k, {})
+        node[keys[-1]] = value
+    with mock.patch.object(commands.Config, "set_user", fake_set_user):
+        rc = commands.cmd_model(build_parser().parse_args(
+            ["model", "set", "openrouter", "stealth/ox-alpha"]))
+    assert rc == 0
+    assert written["model.provider"] == "openrouter"
+    assert written["model.model"] == "stealth/ox-alpha"
+    assert written["model.base_url"] == PROVIDER_PRESETS["openrouter"]["base_url"]
+    assert written["model.api_key_env"] == PROVIDER_PRESETS["openrouter"]["api_key_env"]

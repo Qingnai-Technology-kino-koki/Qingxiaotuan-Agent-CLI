@@ -1,0 +1,20 @@
+{"seq": 1, "ts": 1787828768.0308542, "iso": "2026-08-27T11:06:08.030854+00:00", "type": "audit.ready", "payload": {"type": "audit.ready", "enabled": true, "persist": true}}
+{"seq": 2, "ts": 1787828768.0349555, "iso": "2026-08-27T11:06:08.034956+00:00", "type": "plugin.activated", "payload": {"type": "plugin.activated", "name": "audit"}}
+{"seq": 3, "ts": 1787828768.0389683, "iso": "2026-08-27T11:06:08.038968+00:00", "type": "service.provided", "payload": {"type": "service.provided", "service": "self_improve", "owner": "self.improve"}}
+{"seq": 4, "ts": 1787828768.0419753, "iso": "2026-08-27T11:06:08.041975+00:00", "type": "service.provided", "payload": {"type": "service.provided", "service": "self_improve_rules", "owner": "self.improve"}}
+{"seq": 5, "ts": 1787828768.0439756, "iso": "2026-08-27T11:06:08.043976+00:00", "type": "plugin.activated", "payload": {"type": "plugin.activated", "name": "self.improve"}}
+{"seq": 6, "ts": 1787828768.0459764, "iso": "2026-08-27T11:06:08.045976+00:00", "type": "service.provided", "payload": {"type": "service.provided", "service": "mcp_clients", "owner": "mcp"}}
+{"seq": 7, "ts": 1787828768.0459764, "iso": "2026-08-27T11:06:08.045976+00:00", "type": "plugin.activated", "payload": {"type": "plugin.activated", "name": "mcp"}}
+{"seq": 8, "ts": 1787828768.0459764, "iso": "2026-08-27T11:06:08.045976+00:00", "type": "plugin.activated", "payload": {"type": "plugin.activated", "name": "tools.subagent"}}
+{"seq": 9, "ts": 1787828768.0459764, "iso": "2026-08-27T11:06:08.045976+00:00", "type": "plugin.activated", "payload": {"type": "plugin.activated", "name": "tools.messaging"}}
+{"seq": 10, "ts": 1787828768.0459764, "iso": "2026-08-27T11:06:08.045976+00:00", "type": "plugin.activated", "payload": {"type": "plugin.activated", "name": "tools.workflow"}}
+{"seq": 11, "ts": 1787828768.0459764, "iso": "2026-08-27T11:06:08.045976+00:00", "type": "plugin.activated", "payload": {"type": "plugin.activated", "name": "tools.artifact"}}
+{"seq": 12, "ts": 1787828768.0459764, "iso": "2026-08-27T11:06:08.045976+00:00", "type": "plugin.activated", "payload": {"type": "plugin.activated", "name": "tools.memory"}}
+{"seq": 13, "ts": 1787828768.0459764, "iso": "2026-08-27T11:06:08.045976+00:00", "type": "plugin.activated", "payload": {"type": "plugin.activated", "name": "tools.skills"}}
+{"seq": 14, "ts": 1787828768.1015968, "iso": "2026-08-27T11:06:08.101597+00:00", "type": "service.provided", "payload": {"type": "service.provided", "service": "model_adapter", "owner": "test"}}
+{"seq": 15, "ts": 1787828768.125479, "iso": "2026-08-27T11:06:08.125479+00:00", "type": "model.retry", "payload": {"type": "model.retry", "attempt": 1, "wait": 2.5, "kind": "other", "status": null, "error": "boom on purpose"}}
+{"seq": 16, "ts": 1787828768.125479, "iso": "2026-08-27T11:06:08.125479+00:00", "type": "model.retry", "payload": {"type": "model.retry", "attempt": 1, "wait": 2.1, "kind": "other", "status": null, "error": "boom on purpose"}}
+{"seq": 17, "ts": 1787828770.204348, "iso": "2026-08-27T11:06:10.204348+00:00", "type": "model.retry", "payload": {"type": "model.retry", "attempt": 2, "wait": 5.1, "kind": "other", "status": null, "error": "boom on purpose"}}
+{"seq": 18, "ts": 1787828770.6716673, "iso": "2026-08-27T11:06:10.671667+00:00", "type": "model.retry", "payload": {"type": "model.retry", "attempt": 2, "wait": 4.6, "kind": "other", "status": null, "error": "boom on purpose"}}
+{"seq": 19, "ts": 1787828775.2446158, "iso": "2026-08-27T11:06:15.244616+00:00", "type": "model.retry", "payload": {"type": "model.retry", "attempt": 1, "wait": 2.2, "kind": "other", "status": null, "error": "boom on purpose"}}
+{"seq": 20, "ts": 1787828777.4202025, "iso": "2026-08-27T11:06:17.420202+00:00", "type": "model.retry", "payload": {"type": "model.retry", "attempt": 2, "wait": 5.1, "kind": "other", "status": null, "error": "boom on purpose"}}

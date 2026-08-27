@@ -6,14 +6,14 @@
 
 ## 一、推送前置步骤（必须你来执行）
 
-当前本地状态：已 commit（`e26912a`），`origin` 已指向 `https://github.com/Qingnai-Tech/Qingxiaotuan-Agent.git`，分支 `main`。
+当前本地状态：HEAD 在 `c58bdb1`，另有发行准备改动待提交（推送前先 `git add -A && git commit`）；`origin` 已指向 `https://github.com/Qingnai-Technology-kino-koki/Qingxiaotuan-Agent-CLI.git`，分支 `main`。
 
 阻塞点（需你的账号授权，Agent 无法代劳）：
 
 1. **在 GitHub 网页创建空仓库**
    - 访问 https://github.com/new
    - Repository name: `Qingxiaotuan-Agent`
-   - Owner: `Qingnai-Tech`
+   - Owner: `Qingnai-Technology-kino-koki`
    - 设为 **Public**
    - **不要**勾选 "Add a README / .gitignore / LICENSE"（本地已全有）
    - 点 Create repository
@@ -21,7 +21,7 @@
 2. **解决本机推送认证**（三选一）
    - **方式 A（推荐，SSH）**：本地生成 `ssh-keygen -t ed25519`，把 `~/.ssh/id_ed25519.pub` 内容加到 GitHub → Settings → SSH and GPG keys；再把 remote 改为 SSH：
      ```
-     git remote set-url origin git@github.com:Qingnai-Tech/Qingxiaotuan-Agent.git
+     git remote set-url origin git@github.com:Qingnai-Technology-kino-koki/Qingxiaotuan-Agent-CLI.git
      git push -u origin main
      ```
    - **方式 B（HTTPS + Personal Access Token）**：GitHub → Settings → Developer settings → PAT（勾 `repo`），推送时用 token 当密码：
@@ -33,7 +33,7 @@
      git -c http.schannelCheckRevoke=false push -u origin main
      ```
 
-3. 推送后验证：`qxt ext selftest` 应显示 16/16 引擎就绪（用户本地 `npm run build` 后）。
+3. 推送后验证：`qxt ext selftest` 应显示 10/10 引擎就绪（纯 Python 进程内实现，无需任何编译）。
 
 ---
 
@@ -41,7 +41,7 @@
 
 ```
 青小团 (Qingxiaotuan) — 以"最小影响半径"为核心设计理念的 Agent CLI。
-Shell 执行前安全拦截 · 自我改进闭环 · C/TS 外部能力引擎。
+Shell 执行前安全拦截 · 自我改进闭环 · 纯 Python 外部能力引擎。
 Python 内核 + 插件系统, 模型中立。
 ```
 
@@ -65,8 +65,6 @@ safety
 self-improving
 prompt-engineering
 python
-typescript
-c
 mcp
 plugin-system
 devtools
@@ -89,12 +87,12 @@ productivity
    > 一个以"最小影响半径"为核心设计理念的 Agent CLI：在 Agent 替你改东西之前, 先想清楚这一步会动到哪里、会不会翻车。
 
 2. **真实状态栏**（已写, 用客观数据背书）：
-   > 核心测试 215 passed / 3 failed；外部引擎 16/16 就绪（8 C + 8 TS, `qxt ext selftest` 验证）。
+   > 完整测试套件 591 passed / 1 skipped（离线）；外部引擎 10/10 就绪（纯 Python, `qxt ext selftest` 验证）。
 
 3. **3 个差异化能力**（不夸大, 用"设计目标/已实现"措辞）：
    - 最小影响半径：shell 执行前静态风险评分, critical 级默认拦截
    - 自我改进闭环：每次执行后复盘, 学到的护栏下次分发前自动生效
-   - 统一多语言内核：C/TS 引擎经 JSONL IPC 与 Python 内核对话
+   - 统一多语言内核：外部能力引擎为纯 Python 进程内实现, 经注册表与 Python 内核直连, 零编译零 IPC 开销
 
 4. **一张架构图 / 一张 demo 截图**（强烈建议补）：
    - 放一张 `qxt run` 真实任务的安全拦截截图（证明"已生效"而非宣称）
@@ -133,7 +131,7 @@ productivity
 - 在 README 加 "Used by / Awesome" 类目提名, 争取被 curated list 收录。
 
 ### 关键风险（必须正视）
-- **门槛高**：多语言栈（Python+C+TS）劝退普通用户。缓解：强调"不编译也能用核心能力", 提供预编译 release 包。
+- **门槛高**：缓解：纯 Python 全栈已消除编译门槛；仍需确保 `pip install -e .` 一步到位。
 - **半成品感**：若用户 clone 后跑不通, 差评扩散快。缓解：发布前确保 `pip install -e .` + `qxt setup` 真能跑通一个真实任务。
 - **宣称 vs 体验落差**：这是你指出的核心风险。所有"已生效"必须配截图/测试, 否则宁可写"设计目标"。
 
@@ -147,7 +145,7 @@ productivity
 
 - [ ] GitHub 空仓库已创建 (Public)
 - [ ] 已推送 main 分支, 含本次 commit
-- [ ] Release 页提供 Windows/Linux/macOS 预编译 C 引擎包（降低门槛）
+- [ ] Release 页提供 Windows/macOS/Linux 一键安装说明（纯 Python, 无预编译产物）
 - [ ] README 顶部有英文摘要 + 状态栏 + 快速开始
 - [ ] 至少有 1 张 demo 截图 / 视频
 - [ ] Topics 已填（前 10 个热词）

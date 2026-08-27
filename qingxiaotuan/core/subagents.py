@@ -21,9 +21,12 @@ import os
 import threading
 import time
 from dataclasses import dataclass, field
-from typing import Any, Callable, Dict, List, Optional, Sequence
+from typing import TYPE_CHECKING, Any, Callable, Dict, List, Optional, Sequence
 
 from .kernel import Kernel
+
+if TYPE_CHECKING:
+    from .agent import Agent
 
 
 @dataclass
@@ -89,9 +92,9 @@ class SubAgentPool:
         self.main_agent = main_agent
         self.confirm = confirm
         self.exclude_tools = tuple(exclude_tools)
-        # 并发度: 默认 4, 可由配置 agent.subagent_max_workers 覆盖
+        # 并发度: 默认 5, 可由配置 agent.subagent_max_workers 覆盖
         if max_workers is None:
-            max_workers = int(config.get("agent.subagent_max_workers", 4))
+            max_workers = int(config.get("agent.subagent_max_workers", 5))
         self.max_workers = max(1, min(max_workers, 16))
         self.default_timeout = default_timeout
         # isolation: "process" = 进程级沙箱隔离 (生产级, 默认); "thread" = 软隔离 (兼容/无 subprocess)
@@ -127,6 +130,21 @@ class SubAgentPool:
                 task, stream=stream,
                 on_sub_token=on_sub_token, on_sub_tool=on_sub_tool, on_error=on_error,
             )
+            # 用户级 Hooks: SubagentStop (单个子任务结束时通知, 异常隔离不影响派发)
+            hooks = getattr(getattr(self.main_agent, "ctx", None), "hooks", None) \
+                if self.main_agent is not None else None
+            if hooks is not None:
+                r = results[idx]
+                try:
+                    hooks.run_notify("SubagentStop", {
+                        "task_id": task.task_id,
+                        "prompt": (task.prompt or "")[:500],
+                        "ok": bool(getattr(r, "ok", False)),
+                        "elapsed": getattr(r, "elapsed", 0.0),
+                        "error": getattr(r, "error", "") or "",
+                    })
+                except Exception:
+                    pass
 
         # 把全局 model_overrides (如 herdr 弱模型) 写进每个子任务, 仅当任务本身未指定
         for t in tasks:
@@ -183,6 +201,8 @@ class SubAgentPool:
             yolo=yolo,
             timeout=timeout,
             model_overrides=model_overrides or {},
+            # 类型化子代理: 角色指令随请求文件透传给沙箱子进程
+            system_extra=str(task.meta.get("system_extra", "") or ""),
             worker_module=self.worker_module,
         )
 
@@ -201,6 +221,9 @@ class SubAgentPool:
         started = time.time()
 
         def _worker() -> SubResult:
+            # 临时热切换的还原上下文: (切换前的 model.* 配置视图, 切换前的内核适配器)。
+            # 在调 switch_model 之前先记好, 即使切换半途失败也能完整还原。
+            switch_ctx: Optional[tuple] = None
             try:
                 # 延迟导入, 打破 core.agent <-> tools.dispatch 的循环依赖
                 from .agent import Agent
@@ -208,7 +231,11 @@ class SubAgentPool:
                 # (并发多 worker 时内核 adapter 是共享状态, 切换会互相干扰 —— 此时请用 process 隔离)
                 if model_overrides and self.max_workers == 1:
                     from ..models.plugin import ModelPlugin
-                    ModelPlugin.switch_model(self.kernel, dict(model_overrides), persist=False)
+                    ov = dict(model_overrides)
+                    before = {f"model.{k}": self.config.get(f"model.{k}") for k in ov}
+                    prev_adapter = self.kernel.get("model_adapter")
+                    switch_ctx = (before, prev_adapter)
+                    ModelPlugin.switch_model(self.kernel, ov, persist=False)
                 # 隔离的 Agent 实例: 各自的 messages/上下文, 共享内核工具
                 agent = Agent(
                     kernel=self.kernel,
@@ -216,6 +243,8 @@ class SubAgentPool:
                     workspace=self.workspace,
                     confirm=self.confirm,
                     exclude_tools=tuple(set(self.exclude_tools) | set(task.exclude_tools)),
+                    # 类型化子代理: 角色指令经 meta["system_extra"] 注入系统提示
+                    system_extra=str(task.meta.get("system_extra", "") or ""),
                 )
                 if self.main_agent is not None and hasattr(self.main_agent, "ctx"):
                     # YOLO / 自动批准回调一并继承, 后台干活无需逐个点确认
@@ -266,6 +295,24 @@ class SubAgentPool:
                     elapsed=time.time() - started,
                     error=f"{type(exc).__name__}: {exc}",
                 )
+            finally:
+                # 无论成败都还原临时热切换 (与 Swarm._strong_switch_off 同一套语义):
+                # 不还原的话内核里会残留弱模型适配器, 主 Agent 后续所有轮次都被劫持。
+                if switch_ctx is not None:
+                    before, prev_adapter = switch_ctx
+                    # 还原内存配置视图 (persist=False 只改了内存层, 换回即无残留)
+                    try:
+                        from ..config.loader import patch_replace
+                        self.config.data = patch_replace(self.config.data, before)
+                    except Exception:  # noqa: BLE001
+                        pass
+                    # 把切换前的适配器实例装回内核
+                    try:
+                        self.kernel.unprovide("model_adapter")
+                        if prev_adapter is not None:
+                            self.kernel.provide("model_adapter", prev_adapter, owner="model")
+                    except Exception:  # noqa: BLE001
+                        pass
 
         # 超时控制: 用线程包装, 超时则标记失败而非无限阻塞
         result_holder: Dict[str, SubResult] = {}

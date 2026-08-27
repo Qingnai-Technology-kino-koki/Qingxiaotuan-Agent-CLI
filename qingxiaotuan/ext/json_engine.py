@@ -1,4 +1,4 @@
-"""纯 Python 实现 json 引擎 (替代 ext/c/json.c)
+"""纯 Python 实现 json 引擎
 RFC 6901 Pointer 精确取值 / 逐路径 diff / 深合并
 """
 import json

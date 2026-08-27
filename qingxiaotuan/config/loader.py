@@ -8,15 +8,20 @@ from __future__ import annotations
 
 import copy
 import json
+import logging
 import os
 import sys
+import tempfile
 from pathlib import Path
 from typing import Any, Dict, Optional
 
+log = logging.getLogger(__name__)
+
 # 优先尝试导入 PyYAML; 若不可用 (隔离环境/未安装), 降级为内置极简解析器
-_yaml = None
+_yaml: Any = None
 try:
-    import yaml as _yaml
+    import yaml as _yaml_mod
+    _yaml = _yaml_mod
 except ImportError:
     _yaml = None
 
@@ -91,8 +96,8 @@ def _chmod_600(path: Path) -> None:
             subprocess.run(["attrib", "+H", str(path)], capture_output=True, timeout=5)
         else:
             os.chmod(path, 0o600)
-    except Exception:
-        pass
+    except Exception as exc:
+        log.debug("设置配置文件权限失败 (%s): %s", path, exc)
 
 
 # ---- 极简 YAML 子集解析器 (PyYAML 不可用时的降级) ----
@@ -140,17 +145,36 @@ def _load_yaml(path: Path) -> Dict[str, Any]:
 
 
 def dump_yaml(data: Dict[str, Any], path: Path) -> None:
-    """写入 YAML 配置。"""
+    """写入 YAML 配置 (临时文件 + 原子替换, 崩溃不留下半截配置)。"""
     path.parent.mkdir(parents=True, exist_ok=True)
     try:
+        fd, temp_name = tempfile.mkstemp(prefix=path.name + ".", suffix=".tmp", dir=path.parent)
+        try:
+            with os.fdopen(fd, "w", encoding="utf-8") as f:
+                if _yaml is not None:
+                    _yaml.safe_dump(data, f, allow_unicode=True, sort_keys=False)
+                else:
+                    json.dump(data, f, ensure_ascii=False, indent=2)
+                f.flush()
+                os.fsync(f.fileno())
+            os.replace(temp_name, path)
+        finally:
+            try:
+                Path(temp_name).unlink()
+            except FileNotFoundError:
+                pass
+    except Exception as exc:
+        log.warning("配置写入失败 (%s): %s", path, exc)
+
+
+def to_yaml_str(data: Dict[str, Any]) -> str:
+    """把配置序列化为 YAML 字符串 (用于 qxt config dump 打印)。"""
+    try:
         if _yaml is not None:
-            with open(path, "w", encoding="utf-8") as f:
-                _yaml.safe_dump(data, f, allow_unicode=True, sort_keys=False)
-        else:
-            with open(path, "w", encoding="utf-8") as f:
-                json.dump(data, f, ensure_ascii=False, indent=2)
+            return str(_yaml.safe_dump(data, allow_unicode=True, sort_keys=False))
+        return json.dumps(data, ensure_ascii=False, indent=2)
     except Exception:
-        pass
+        return json.dumps(data, ensure_ascii=False, indent=2)
 
 
 class Config:
@@ -248,7 +272,7 @@ class Config:
 
     @property
     def mode(self) -> str:
-        return self.get("mode.default", "standard")
+        return str(self.get("mode.default", "standard"))
 
     @mode.setter
     def mode(self, value: str) -> None:

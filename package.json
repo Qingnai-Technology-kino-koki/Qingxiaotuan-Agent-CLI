@@ -1,37 +1,52 @@
 {
-  "name": "qingxiaotuan-agent",
-  "version": "0.1.0",
-  "description": "青小团 (Qingxiaotuan) — 一个以\"最小影响半径\"为核心设计理念的 Agent CLI：Shell 执行前安全拦截、自我改进闭环、C/TS 外部能力引擎。",
-  "license": "MIT",
-  "homepage": "https://github.com/Qingnai-Tech/Qingxiaotuan-Agent",
+  "name": "qingxiaotuan",
+  "version": "0.2.0",
+  "description": "青小团 CLI - 以最小影响半径为核心理念的 Agent CLI，纯 Python 全栈",
+  "bin": {
+    "qxt": "bin/qxt"
+  },
+  "scripts": {
+    "postinstall": "node scripts/install.js",
+    "start": "qxt chat",
+    "setup": "qxt setup",
+    "test": "python -m pytest tests/ -q",
+    "typecheck": "python -m mypy qingxiaotuan",
+    "ext:selftest": "qxt ext selftest"
+  },
   "repository": {
     "type": "git",
-    "url": "https://github.com/Qingnai-Tech/Qingxiaotuan-Agent.git"
-  },
-  "bugs": {
-    "url": "https://github.com/Qingnai-Tech/Qingxiaotuan-Agent/issues"
+    "url": "https://github.com/Qingnai-Technology-kino-koki/Qingxiaotuan-Agent-CLI.git"
   },
   "keywords": [
     "agent",
     "cli",
     "ai",
-    "llm",
-    "coding-agent",
+    "coding-assistant",
     "safety",
-    "self-improving",
-    "developer-tools"
+    "python",
+    "qingxiaotuan",
+    "青小团"
   ],
+  "author": "Qingnai Technology",
+  "license": "MIT",
   "engines": {
-    "node": ">=18"
+    "node": ">=16.0.0"
   },
-  "scripts": {
-    "build": "npm run build:ts && npm run build:c",
-    "build:ts": "cd ext/ts && npm install && npm run build",
-    "build:c": "bash scripts/build-c.sh",
-    "test:ts": "cd ext/ts && npm test",
-    "selftest": "python -m qingxiaotuan.cli.main ext selftest"
-  },
-  "workspaces": [
-    "ext/ts"
+  "files": [
+    "bin/",
+    "scripts/",
+    "qingxiaotuan/",
+    "pyproject.toml",
+    "README.md",
+    "LICENSE"
+  ],
+  "os": [
+    "win32",
+    "darwin",
+    "linux"
+  ],
+  "cpu": [
+    "x64",
+    "arm64"
   ]
 }

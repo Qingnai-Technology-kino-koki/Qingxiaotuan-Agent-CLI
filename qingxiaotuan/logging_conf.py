@@ -73,22 +73,13 @@ def setup_logging(home: Path, level: int = logging.INFO, audit: bool = False) ->
 
 
 class _ConsoleFormatter(logging.Formatter):
-    """终端彩色: INFO 默认, WARN 黄, ERROR 红, DEBUG 暗灰。"""
-
-    _COLORS = {
-        "DEBUG": "dim",
-        "INFO": "cyan",
-        "WARNING": "yellow",
-        "ERROR": "red",
-        "CRITICAL": "bold red",
-    }
+    """终端纯文本: 不输出任何颜色/标记。"""
 
     def format(self, record: logging.LogRecord) -> str:
-        color = self._COLORS.get(record.levelname, "cyan")
         msg = record.getMessage()
         if record.levelno <= logging.INFO:
-            return f"[{color}]{msg}[/]" if False else msg  # rich 着色交由调用方
-        return f"[{color}]{record.levelname}: {msg}[/]"
+            return msg
+        return f"{record.levelname}: {msg}"
 
 
 # 模块级便捷 logger (在 setup_logging 之前可用, 之后被替换)

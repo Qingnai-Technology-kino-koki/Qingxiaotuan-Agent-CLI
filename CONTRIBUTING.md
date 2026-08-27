@@ -1,9 +1,8 @@
 # 贡献指南 (Contributing)
 
-感谢你对 **青小团 (Qingxiaotuan)** 感兴趣！这个项目融合了两套理念并做了超越式自研：
+感谢你对 **青小团 (Qingxiaotuan)** 感兴趣！
 
-- **DeepSeek Harness (dsh)** 的插件化微内核、Profile 组合式配置、模型中立适配、headless 任务、append-only 会话事件流；
-- **Hermes Agent** 的自进化技能蒸馏（Skill）与三层记忆（会话 / 事实 / 程序性技能）。
+青小团是一个以「最小影响半径」为核心理念的纯 Python Agent CLI：shell 执行前静态风险拦截、自我改进闭环、10 个进程内外部能力引擎。设计上借鉴了 DeepSeek Harness 的插件化微内核与 Hermes Agent 的自进化技能蒸馏思路，并在此基础上有自己的工程取舍。
 
 我们欢迎一切让"青小团"更聪明、更稳、更能干的贡献。
 
@@ -11,8 +10,9 @@
 
 ```bash
 git clone <your-fork>
-cd qingxiaotuan-agent-cli
-python -m venv .venv && .venv/Scripts/activate   # Windows; macOS/Linux 用 source .venv/bin/activate
+cd Qingxiaotuan-Agent
+python -m venv .venv && source .venv/Scripts/activate   # Windows (Git Bash); PowerShell 用 .venv\Scripts\Activate.ps1
+# macOS/Linux: python -m venv .venv && source .venv/bin/activate
 pip install -e ".[dev]"
 pytest tests/ -q
 ```
@@ -24,13 +24,19 @@ pytest tests/ -q
 ```
 qingxiaotuan/
   app.py            内核装配 (build_kernel) 与 Agent 工厂 (create_agent)
-  core/             kernel(微内核) / agent(ReAct 循环) / prompts / context / subagents / background / sandbox
-  models/           模型适配层 (OpenAI 兼容协议通吃各家; ModelPlugin 支持运行时热切换)
+  core/             agent(ReAct 循环) / prompts / context / subagents / background / sandbox / retry / swarm
+  models/           模型适配层: openai_compat / anthropic / router(运行时热切换) / provider_catalog / plugin
   tools/            内置工具 + 派发 (dispatch_tasks 并发子任务)
   memory/           三层记忆 (FTS5) + 会话事件流 (SessionStore)
   config/           四层组合配置 (默认 → 用户 → profile → patch)
+  ext/              10 个纯 Python 外部能力引擎 (diff/crypto/index/ansi/safety/json/search/notify/rules/skill_market) + 注册中心
+  skills/           技能系统 (加载 / 蒸馏 / 技能市场)
+  self_improve/     自我改进闭环 (执行后复盘 → 护栏下次分发前生效)
+  cron/             定时任务 (持久化调度 + 常驻守护进程)
+  audit/            审计日志
+  context/          上下文构建与 codebase 地图
   cli/              qxt 命令行入口与子命令
-  ui/               Rich 终端界面
+  ui/               终端界面 (Rich REPL / 全屏 TUI / 吉祥物 / 共享主题 theme.py)
 ```
 
 设计原则：**模型可插拔、工具即插件、记忆可成长、会话可回放**。任何新能力优先以 Plugin / Tool / Skill 形式接入，避免在主干里堆 if-else。
@@ -53,7 +59,7 @@ qingxiaotuan/
 ## 报告问题
 
 - Bug：开 Issue，附复现步骤、`qxt doctor` 输出、`qxt config dump` 脱敏版
-- 安全漏洞：**请勿公开 Issue**，直接发邮件给维护者或在 GitHub Security Advisory 私密提交
+- 安全漏洞：**请勿公开 Issue**，按 [SECURITY.md](./SECURITY.md) 通过 GitHub 私密漏洞报告提交
 
 ## 行为准则
 

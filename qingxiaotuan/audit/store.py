@@ -125,6 +125,7 @@ class AuditQuery:
     since: Optional[float] = None
     until: Optional[float] = None
     keyword: str = ""
+    limit: int = 0  # >0 时仅返回最早的前 N 条 (0 = 不限)
 
     def match(self, ev: AuditEvent) -> bool:
         if self.types and ev.type not in self.types:
@@ -187,7 +188,8 @@ class AuditStore:
         q = query or AuditQuery()
         with self._lock:
             buffered = [ev for ev in self._buffer if q.match(ev)]
-        # 合并持久化记录 (落盘的可能比缓冲更全, 但缓冲更新)
+        # 合并持久化记录 (落盘的可能比缓冲更全, 但缓冲更新); seq 集合只建一次
+        seen = {b.seq for b in buffered}
         if self.persist and self._path is not None and self._path.exists():
             try:
                 with self._path.open("r", encoding="utf-8") as fh:
@@ -199,28 +201,99 @@ class AuditStore:
                             ev = AuditEvent.from_line(line)
                         except json.JSONDecodeError:
                             continue
-                        if q.match(ev) and ev.seq not in {b.seq for b in buffered}:
+                        if q.match(ev) and ev.seq not in seen:
+                            seen.add(ev.seq)
                             buffered.append(ev)
             except OSError:
                 pass
         buffered.sort(key=lambda e: e.ts)
+        if q.limit and q.limit > 0:
+            buffered = buffered[:q.limit]
         return buffered
 
     def recent(self, n: int = 20, types: Tuple[str, ...] = ()) -> List[AuditEvent]:
         q = AuditQuery(types=types) if types else AuditQuery()
         return self.query(q)[-n:]
 
+    def _iter_disk_events(self) -> List[AuditEvent]:
+        """读取全部落盘记录 (解析失败的行跳过)。"""
+        out: List[AuditEvent] = []
+        if self.persist and self._path is not None and self._path.exists():
+            try:
+                with self._path.open("r", encoding="utf-8") as fh:
+                    for line in fh:
+                        line = line.strip()
+                        if not line:
+                            continue
+                        try:
+                            out.append(AuditEvent.from_line(line))
+                        except json.JSONDecodeError:
+                            continue
+            except OSError:
+                pass
+        return out
+
     def stats(self) -> Dict[str, Any]:
+        """审计统计: 覆盖内存缓冲 + 落盘全量 (此前仅统计缓冲, 落盘后数字失真)。"""
         with self._lock:
-            by_type: Dict[str, int] = {}
-            for ev in self._buffer:
-                by_type[ev.type] = by_type.get(ev.type, 0) + 1
-            return {
-                "enabled": self.enabled,
-                "persist": self.persist,
-                "buffered": len(self._buffer),
-                "by_type": by_type,
-            }
+            events = list(self._buffer)
+            buffered_n = len(self._buffer)
+        seen = {e.seq for e in events}
+        for ev in self._iter_disk_events():
+            if ev.seq not in seen:
+                seen.add(ev.seq)
+                events.append(ev)
+        by_type: Dict[str, int] = {}
+        for ev in events:
+            by_type[ev.type] = by_type.get(ev.type, 0) + 1
+        tss = sorted(e.ts for e in events)
+        fmt_iso = lambda t: datetime.fromtimestamp(t, tz=timezone.utc).isoformat()
+        return {
+            "enabled": self.enabled,
+            "persist": self.persist,
+            "buffered": buffered_n,
+            "total": len(events),
+            "by_type": by_type,
+            "oldest_iso": fmt_iso(tss[0]) if tss else None,
+            "newest_iso": fmt_iso(tss[-1]) if tss else None,
+        }
+
+    def export(self, path, fmt: str = "jsonl",
+               query: Optional[AuditQuery] = None) -> Dict[str, Any]:
+        """导出审计记录到文件 (仅脱敏后 payload, 绝不含 raw 原文)。
+
+        fmt: jsonl (默认, 一行一条) / json (数组) / csv (seq,ts,iso,type,payload_json)
+        返回 {"path", "count", "fmt"}; 未知格式抛 ValueError。
+        """
+        fmt = (fmt or "").lower()
+        if fmt not in ("jsonl", "json", "csv"):
+            raise ValueError(f"不支持的导出格式: {fmt} (可选 jsonl/json/csv)")
+        events = self.query(query)
+        target = Path(path)
+        if fmt == "csv":
+            import csv
+            with target.open("w", encoding="utf-8", newline="") as fh:
+                writer = csv.writer(fh)
+                writer.writerow(["seq", "ts", "iso", "type", "payload_json"])
+                for ev in events:
+                    iso = datetime.fromtimestamp(ev.ts, tz=timezone.utc).isoformat()
+                    writer.writerow([ev.seq, ev.ts, iso, ev.type,
+                                     json.dumps(ev.payload, ensure_ascii=False)])
+        elif fmt == "json":
+            records = []
+            for ev in events:
+                records.append({
+                    "seq": ev.seq, "ts": ev.ts,
+                    "iso": datetime.fromtimestamp(ev.ts, tz=timezone.utc).isoformat(),
+                    "type": ev.type, "payload": ev.payload,
+                })
+            target.write_text(json.dumps(records, ensure_ascii=False, indent=2),
+                              encoding="utf-8")
+        else:
+            with target.open("w", encoding="utf-8") as fh:
+                for ev in events:
+                    fh.write(ev.to_line() + "\n")
+        return {"path": str(target), "count": len(events), "fmt": fmt}
 
     def clear_buffer(self) -> None:
         with self._lock:

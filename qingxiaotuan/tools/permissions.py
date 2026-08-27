@@ -38,6 +38,7 @@ _FD_REDIRECT_RE = re.compile(r"\b\d+>\s*\S")
 class PermissionDecision:
     action: str  # allow | confirm | deny
     reason: str
+    explicit: bool = False  # True = 用户规则表显式 allow (可豁免危险工具确认)
 
 
 class PermissionPolicy:
@@ -47,6 +48,7 @@ class PermissionPolicy:
         self.config = config
         self.shell_deny = tuple(self._get("permissions.shell.deny_patterns", ()))
         self.network_allow = tuple(self._get("permissions.network.allow_domains", ()))
+        self.rules = tuple(self._get("permissions.rules", ()))
         self.yolo_redline = set(self._get("mode.yolo_require_confirm", ()))
         self.workspace = self._get("_workspace", "")
 
@@ -84,11 +86,56 @@ class PermissionPolicy:
                 if re.search(pattern, command, re.IGNORECASE):
                     return PermissionDecision("deny", f"命令匹配拒绝规则: {pattern}")
 
+        # 用户自定义规则表 (permissions.rules): 在内置加固之后、默认决策之前生效。
+        # allow 命中带 explicit 标记, 危险工具可据此免确认; 内置加固确认不受豁免。
+        rule_action = self.match_rule(name, args)
+        if rule_action == "deny":
+            return PermissionDecision("deny", f"权限规则 (permissions.rules) 拒绝执行 {name}")
+        if rule_action == "ask":
+            return PermissionDecision("confirm", f"权限规则 (permissions.rules) 要求确认 {name}")
+        if rule_action == "allow":
+            return PermissionDecision("allow", f"权限规则 (permissions.rules) 允许执行 {name}", explicit=True)
+
         if not getattr(tool, "dangerous", False):
             return PermissionDecision("allow", "只读或非危险工具")
         if yolo and name not in self.yolo_redline and not getattr(tool, "yolo_confirm", False):
             return PermissionDecision("allow", "YOLO 自动批准")
         return PermissionDecision("confirm", "危险工具需要用户确认")
+
+    def match_rule(self, name: str, args: dict[str, Any]) -> str | None:
+        """匹配用户自定义规则表, 返回命中动作 (deny/ask/allow) 或 None。
+
+        多条规则同时命中时按 deny > ask > allow 取最严格者;
+        规则格式非法 (非 dict / action 不认识) 时静默跳过。
+        """
+        target = self._rule_target(name, args)
+        hits: list[str] = []
+        for rule in self.rules:
+            if not isinstance(rule, dict):
+                continue
+            tool_pattern = str(rule.get("tool", "*"))
+            if not fnmatch.fnmatch(name.lower(), tool_pattern.lower()):
+                continue
+            arg_pattern = rule.get("pattern")
+            if arg_pattern and not fnmatch.fnmatch(target, str(arg_pattern).lower()):
+                continue
+            action = str(rule.get("action", "")).strip().lower()
+            if action in ("allow", "deny", "ask"):
+                hits.append(action)
+        for priority in ("deny", "ask", "allow"):
+            if priority in hits:
+                return priority
+        return None
+
+    @staticmethod
+    def _rule_target(name: str, args: dict[str, Any]) -> str:
+        """提取规则 pattern 的匹配文本 (小写): run_shell 用命令行, 其余优先 path/url, 兜底拼接参数值。"""
+        if name == "run_shell":
+            return str(args.get("command", "")).lower()
+        for key in ("path", "url"):
+            if key in args:
+                return str(args[key]).lower()
+        return " ".join(str(v) for v in args.values()).lower()
 
     @staticmethod
     def _has_docker_daemon_flags(command: str) -> bool:

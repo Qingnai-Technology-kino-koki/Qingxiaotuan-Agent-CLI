@@ -29,7 +29,7 @@ def _build_clients(config) -> List[MCPClient]:
             log.warning("MCP server 配置缺少 command, 跳过: %s", s)
             continue
         clients.append(MCPClient(
-            name=s.get("name", s["command"]),
+            name=str(s.get("name") or s["command"]),
             command=s["command"],
             args=s.get("args", []),
             env=s.get("env", {}),

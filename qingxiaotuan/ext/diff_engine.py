@@ -1,4 +1,4 @@
-"""纯 Python 实现 diff 引擎 (替代 ext/c/diff.c)
+"""纯 Python 实现 diff 引擎
 行/词级 Myers diff + patch + 3-way merge
 """
 import json

@@ -20,6 +20,7 @@ import subprocess
 import sys
 import tempfile
 import time
+import uuid
 from pathlib import Path
 from typing import Any, Dict, List, Optional
 
@@ -37,7 +38,7 @@ def prepare_sandbox(
     if not src.is_dir():
         raise NotADirectoryError(f"工作区不存在: {workspace}")
     base = parent or Path(tempfile.gettempdir())
-    sandbox = base / f"qxt-sandbox-{task_id}-{int(time.time() * 1000)}"
+    sandbox = base / f"qxt-sandbox-{task_id}-{uuid.uuid4().hex[:8]}"
     sandbox.mkdir(parents=True, exist_ok=True)
     _SKIP = set(ignore or [".git", "__pycache__", ".venv", "node_modules", ".qxt-sandbox"])
     # 用 shutil.copytree 逐文件复制 (比符号链接安全: 子进程写沙箱不影响源)
@@ -67,6 +68,7 @@ def run_in_sandbox(
     model_overrides: Optional[Dict[str, Any]] = None,
     cleanup: bool = True,
     worker_module: str = "qingxiaotuan.core._sandbox_entry",
+    system_extra: str = "",
 ) -> SubResult:
     """在进程级沙箱里跑一个子任务, 返回 SubResult。
 
@@ -90,6 +92,7 @@ def run_in_sandbox(
             "yolo": yolo,
             "qxt_home": qxt_home,
             "model_overrides": model_overrides or {},
+            "system_extra": system_extra,
         }
         req_path.write_text(json.dumps(req, ensure_ascii=False), encoding="utf-8")
 
@@ -100,6 +103,7 @@ def run_in_sandbox(
             cmd = [sys.executable, "-m", worker_module, str(req_path), str(resp_path)]
         # 注意: 不 capture stdout/stderr —— 结果走 resp 文件, 且 Windows 下
         # capture_output + timeout 在子进程被杀时读管道可能死锁。直接丢到 DEVNULL。
+        proc = None
         proc = subprocess.run(
             cmd,
             stdout=subprocess.DEVNULL,
@@ -108,10 +112,11 @@ def run_in_sandbox(
             env=dict(os.environ),  # 继承 API Key 等环境
         )
         if not resp_path.exists():
+            exit_code = proc.returncode if proc is not None else "?"
             return SubResult(
                 task_id=task.task_id, prompt=task.prompt, ok=False,
                 output="", elapsed=time.time() - started,
-                error=f"子进程无响应 (exit={proc.returncode}); 见子进程 stderr 日志",
+                error=f"子进程无响应 (exit={exit_code}); 见子进程 stderr 日志",
             )
         data = json.loads(resp_path.read_text(encoding="utf-8"))
         return SubResult(

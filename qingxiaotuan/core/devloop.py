@@ -151,8 +151,8 @@ class DevLoop:
             # 检查点: 主动问用户
             need_ask = ask_every > 0 and (n % ask_every == 0 or n == max_iter)
             if self.on_checkpoint and (need_ask or done):
-                decision = self.on_checkpoint(last_report).strip()
-                lower = decision.lower()
+                checkpoint_decision = self.on_checkpoint(last_report).strip()
+                lower = checkpoint_decision.lower()
                 if lower in ("done", "d", "满意", "结束", "stop", "完成", "ok", "好的", "可以"):
                     if self.on_iteration:
                         self.on_iteration(-1, max_iter, "用户确认完成, 停止循环")
@@ -160,7 +160,7 @@ class DevLoop:
                 if lower in ("c", "continue", "继续", "next", "下一轮"):
                     accumulated_feedback = ""
                     continue
-                accumulated_feedback = self._append_feedback(accumulated_feedback, decision)
+                accumulated_feedback = self._append_feedback(accumulated_feedback, checkpoint_decision)
                 continue
 
             if done and not stop_on_ok:

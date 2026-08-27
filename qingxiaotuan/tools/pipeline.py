@@ -16,6 +16,7 @@ from __future__ import annotations
 
 import json
 import logging
+import re
 import time
 from dataclasses import dataclass, field
 from enum import Enum
@@ -24,6 +25,8 @@ from typing import Any, Callable, Dict, List, Optional
 from .base import Tool, ToolContext, string_prop
 
 log = logging.getLogger("qingxiaotuan.pipeline")
+
+_VAR_RE = re.compile(r"\$\{([^}]+)\}")
 
 
 class StepStatus(str, Enum):
@@ -194,14 +197,20 @@ class Pipeline:
     def _resolve_variables(self, args: Dict[str, Any]) -> Dict[str, Any]:
         resolved: Dict[str, Any] = {}
         for key, value in args.items():
-            if isinstance(value, str) and value.startswith("${") and value.endswith("}"):
-                var_name = value[2:-1]
-                resolved[key] = self._variables.get(var_name, value)
+            if isinstance(value, str):
+                resolved[key] = self._resolve_string(value)
             elif isinstance(value, dict):
                 resolved[key] = self._resolve_variables(value)
             else:
                 resolved[key] = value
         return resolved
+
+    def _resolve_string(self, value: str) -> str:
+        """替换字符串中的 ${var} 占位符; 未定义变量保留原样。"""
+        def repl(match: "re.Match[str]") -> str:
+            var_name = match.group(1)
+            return self._variables.get(var_name, match.group(0))
+        return _VAR_RE.sub(repl, value)
 
     def _evaluate_condition(self, condition: str) -> bool:
         parts = condition.split(None, 2)
@@ -264,17 +273,6 @@ def pipeline_list_tools(ctx: ToolContext) -> str:
     return "\n\n".join(tools_info)
 
 
-class PipelinePlugin:
-    """Pipeline 工具插件 (需继承 Plugin)。"""
-
-    def __init__(self):
-        pass
-
-    def activate(self, kernel):
-        pass
-
-
-# 动态继承 Plugin
 from ..core.kernel import Plugin as _Plugin  # noqa: E402
 
 

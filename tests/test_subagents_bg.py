@@ -129,6 +129,50 @@ def test_subagent_pool_timeout(tmp_path, qxt_home):
     assert "超时" in (results[0].error or "")
 
 
+# ------------------------------------------------------------------ 弱模型覆盖的还原
+
+def test_subagent_thread_override_restores_kernel_model(tmp_path, qxt_home):
+    """线程隔离 + 单 worker + 弱模型覆盖: 子任务跑完后内核适配器与配置视图必须还原。
+
+    回归背景: _run_one_thread 曾在 switch_model(persist=False) 之后从不还原,
+    内核里残留弱模型适配器, 主 Agent 后续任何 require("model_adapter") 都被劫持。
+    """
+    kernel = build_kernel()
+    config = kernel.require("config")
+    echo = EchoModel()
+    kernel.unprovide("model_adapter")
+    kernel.provide("model_adapter", echo, owner="test")
+
+    provider_before = config.get("model.provider")
+    overrides = {
+        "provider": "openai-compatible",
+        "base_url": "http://127.0.0.1:9/v1",  # 不可达端口: 证明子任务确实走了切过去的弱模型
+        "model": "weak-model-x",
+    }
+    pool = SubAgentPool(
+        kernel=kernel, config=config, workspace=str(tmp_path),
+        max_workers=1, isolation="thread", model_overrides=overrides,
+    )
+    results = pool.dispatch(make_tasks(["弱模型子任务"]))
+    # 子任务失败 (弱模型端点连不通), 说明覆盖生效过、且失败没有把内核状态带坏
+    assert len(results) == 1
+    assert not results[0].ok
+    assert "[模型错误]" in (results[0].output or "") or (results[0].error or "")
+
+    # 关键断言: 跑完后内核适配器还原为原来的 EchoModel 实例
+    assert kernel.get("model_adapter") is echo
+    # 配置视图同样还原 (provider / base_url 不残留弱模型覆盖值)
+    assert config.get("model.provider") == provider_before
+    assert config.get("model.base_url") != overrides["base_url"]
+
+    # 新开一个不带覆盖的池子, 回显模型能正常完成任务 (内核状态无残留)
+    pool2 = SubAgentPool(kernel=kernel, config=config, workspace=str(tmp_path),
+                         max_workers=2, isolation="thread")
+    r2 = pool2.dispatch(make_tasks(["还原后子任务"]))
+    assert r2[0].ok
+    assert "回声:" in r2[0].output
+
+
 # ------------------------------------------------------------------ dispatch 工具
 
 def test_dispatch_tasks_tool_registered(tmp_path, qxt_home):

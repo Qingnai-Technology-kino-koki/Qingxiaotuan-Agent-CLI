@@ -1,0 +1,3 @@
+{"reason": "stop", "hook_event_name": "Stop"}
+{"task_id": "T1", "hook_event_name": "SubagentStop"}
+{"trigger": "manual", "hook_event_name": "PreCompact"}

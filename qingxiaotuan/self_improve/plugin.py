@@ -10,13 +10,42 @@
 from __future__ import annotations
 
 import os
+import shutil
+from pathlib import Path
 from typing import Any, Dict, List
 
+from ..config.loader import home_dir
 from ..core.kernel import Kernel, Plugin
 from .reflector import Reflector, Experience
 from .rulegen import RuleGenerator
 from .skillgen import SkillGenerator
 from .store import SelfImproveRuleStore
+
+
+def _legacy_learned_dir() -> Path:
+    """旧版默认位置: 源码树内的 qingxiaotuan/skills/learned (运行时状态不应进源码树)。"""
+    base = os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
+    return Path(base) / "qingxiaotuan" / "skills" / "learned"
+
+
+def _migrate_legacy(legacy: Path, target: Path) -> None:
+    """一次性把旧位置的 learned 数据搬入 <home>/skills/learned。
+
+    仅复制目标缺失的条目 (不覆盖新数据), 任一步失败都静默跳过 —— 迁移不能阻塞启动。
+    """
+    if not legacy.is_dir() or legacy == target:
+        return
+    try:
+        target.mkdir(parents=True, exist_ok=True)
+        src_rules = legacy / "self_improve.jsonl"
+        if src_rules.exists() and not (target / "self_improve.jsonl").exists():
+            shutil.copy2(src_rules, target / "self_improve.jsonl")
+        for child in legacy.iterdir():
+            dst = target / child.name
+            if child.is_dir() and child.name.startswith("learned-") and not dst.exists():
+                shutil.copytree(child, dst)
+    except OSError:
+        pass
 
 
 class SelfImprovePlugin(Plugin):
@@ -25,10 +54,13 @@ class SelfImprovePlugin(Plugin):
     requires = ["config"]
 
     def activate(self, kernel: Kernel) -> None:
-        cfg = kernel.get("config") or {}
-        base = os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
-        skills_dir = cfg.get("self_improve.skills_dir") or os.path.join(base, "qingxiaotuan", "skills", "learned")
-        rules_dir = cfg.get("self_improve.rules_dir") or os.path.join(base, "qingxiaotuan", "skills", "learned")
+        cfg = kernel.get("config")
+        # learned 规则/技能草稿是运行时状态, 统一放 <QXT_HOME>/skills/learned, 不落源码树
+        learned_dir = str(Path(getattr(cfg, "home", None) or home_dir()) / "skills" / "learned")
+        _migrate_legacy(_legacy_learned_dir(), Path(learned_dir))
+        get = cfg.get if cfg is not None else (lambda key, default=None: default)
+        skills_dir = get("self_improve.skills_dir") or learned_dir
+        rules_dir = get("self_improve.rules_dir") or learned_dir
         rules_path = os.path.join(rules_dir, "self_improve.jsonl")
         reflector = Reflector(kernel)
         store = SelfImproveRuleStore(rules_path)

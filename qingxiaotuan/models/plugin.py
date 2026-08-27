@@ -45,12 +45,16 @@ class ModelPlugin(Plugin):
         """
         config = kernel.require("config")
         ov = overrides or {}
-        for key, value in ov.items():
-            if key not in ("provider", "model", "base_url", "api_key_env", "api_key"):
-                # 其余字段 (temperature 等) 也允许透传, 统一走 model.<key>
+        if persist:
+            # 写用户层 config.yaml: 下次启动默认即用新脑子
+            for key, value in ov.items():
                 config.set_user(f"model.{key}", value)
-            else:
-                config.set_user(f"model.{key}", value)
+        else:
+            # 临时切换只改内存视图, 不落盘 (swarm 子任务 / 自动路由等运行时换脑子
+            # 不应把用户的 config.yaml 永久改掉 —— set_user 会写磁盘)
+            from ..config.loader import patch_replace
+            config.data = patch_replace(
+                config.data, {f"model.{key}": value for key, value in ov.items()})
         # 重新构建并注册适配器 (先卸旧实例再装新实例, 让运行中的会话即时换脑子)
         adapter = create_adapter(config)
         kernel.unprovide("model_adapter")

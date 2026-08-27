@@ -74,23 +74,23 @@ def test_status_bar_reflects_tokens():
     u = _ui()
     u._mascot.set(IDLE)
     u.add_tokens(500)
-    u.set_context_pct(33.0)
-    # status_bar 不应抛错, 且 tok= 出现在输出中
+    u.set_context_pct(33.0, used=33000, budget=100000)
+    # status_bar 不应抛错, 且 context 占用与吉祥物图标出现在输出中
     import io
     from contextlib import redirect_stdout
     buf = io.StringIO()
     with redirect_stdout(buf):
         u.status_bar("standard", "high", "/workspace")
     rendered = buf.getvalue()
-    assert "tok=500" in rendered
-    assert "ctx=33%" in rendered
+    assert "context: 33% (33k/100k)" in rendered
+    assert "◦" in rendered  # 吉祥物状态图标保留在状态栏
 
 
 # ----------------------------------------------------- 快捷键面板
 
 def test_keymap_groups_have_slash_and_keys():
     u = _ui()
-    all_keys = [k for _, items in u._KEY_GROUPS for k, _ in items]
+    all_keys = [k for _, items in u._key_groups() for k, _ in items]
     # 同时包含普通键位与斜杠命令
     assert "/help" in all_keys
     assert "Enter" in all_keys

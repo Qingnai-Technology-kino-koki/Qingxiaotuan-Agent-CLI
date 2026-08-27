@@ -98,3 +98,24 @@ def test_slash_compact_and_cost_handlers(tmp_path, qxt_home, capsys):
     out = capsys.readouterr().out
     assert "已压缩" in out
     assert "估算成本" in out
+
+
+def test_slash_route_usage_hint(tmp_path, qxt_home, capsys):
+    """/route 无参数时给出用法提示, 不抛异常。"""
+    from qingxiaotuan.cli.commands import _handle_slash
+    agent = _build_agent(tmp_path, qxt_home, [])
+    assert _handle_slash("/route", agent, agent.config, str(tmp_path)) is True
+    out = capsys.readouterr().out
+    assert "用法" in out
+    assert "自动路由" in out
+
+
+def test_slash_route_suggests_model(tmp_path, qxt_home, capsys):
+    """/route <任务> 返回难度评估与建议模型。"""
+    from qingxiaotuan.cli.commands import _handle_slash
+    agent = _build_agent(tmp_path, qxt_home, [])
+    assert _handle_slash("/route 修复一个按钮的错别字", agent, agent.config,
+                         str(tmp_path)) is True
+    out = capsys.readouterr().out
+    assert "难度评估" in out
+    assert "建议模型" in out

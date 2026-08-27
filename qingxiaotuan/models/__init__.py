@@ -13,15 +13,14 @@
   F. 自托管/本地 (4 家): Ollama, LM Studio, vLLM, 通用本地网关
 """
 
-from typing import Dict
+from typing import Dict, Type
 
 from .base import ModelAdapter, ModelCapabilities, ModelResponse, ToolCall
 from .openai_compat import OpenAICompatAdapter
-from .anthropic import AnthropicAdapter
 from .provider_catalog import (
     ALL_PROVIDERS, ALL_PROVIDER_NAMES, PROVIDER_CATEGORIES,
-    ProviderPreset, get_provider, search_providers, get_free_providers,
-    get_cn_providers, get_global_providers,
+    ProviderPreset, get_provider, get_provider_models, search_providers,
+    get_free_providers, get_cn_providers, get_global_providers,
 )
 
 __all__ = [
@@ -29,7 +28,7 @@ __all__ = [
     "OpenAICompatAdapter", "AnthropicAdapter",
     "create_adapter", "KNOWN_PROVIDERS", "is_known_provider", "PROVIDER_PRESETS",
     "ALL_PROVIDERS", "ALL_PROVIDER_NAMES", "PROVIDER_CATEGORIES",
-    "ProviderPreset", "get_provider", "search_providers",
+    "ProviderPreset", "get_provider", "get_provider_models", "search_providers",
     "get_free_providers", "get_cn_providers", "get_global_providers",
 ]
 
@@ -84,7 +83,14 @@ def create_adapter(config) -> ModelAdapter:
                 f"  qxt model set {provider} <model> https://your-gateway/v1\n"
                 f"或先用已知 provider: qxt model set openai-compatible <model> <base_url>"
             )
-    adapter_cls = AnthropicAdapter if provider == "anthropic" else OpenAICompatAdapter
+    # 显式标注共同基类: 否则 mypy 会按 anthropic 分支把变量收窄成
+    # type[AnthropicAdapter], else 分支赋 OpenAICompatAdapter 即报不兼容。
+    adapter_cls: Type[ModelAdapter]
+    if provider == "anthropic":
+        from .anthropic import AnthropicAdapter  # 延迟导入: 避免启动时加载 httpx
+        adapter_cls = AnthropicAdapter
+    else:
+        adapter_cls = OpenAICompatAdapter
     return adapter_cls(
         base_url=base_url,
         model=config.get("model.model"),

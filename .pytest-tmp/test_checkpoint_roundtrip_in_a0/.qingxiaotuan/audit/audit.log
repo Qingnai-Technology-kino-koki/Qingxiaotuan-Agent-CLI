@@ -1,0 +1,19 @@
+{"seq": 1, "ts": 1787828512.7203176, "iso": "2026-08-27T11:01:52.720318+00:00", "type": "audit.ready", "payload": {"type": "audit.ready", "enabled": true, "persist": true}}
+{"seq": 2, "ts": 1787828512.735025, "iso": "2026-08-27T11:01:52.735025+00:00", "type": "plugin.activated", "payload": {"type": "plugin.activated", "name": "audit"}}
+{"seq": 3, "ts": 1787828512.7392201, "iso": "2026-08-27T11:01:52.739220+00:00", "type": "service.provided", "payload": {"type": "service.provided", "service": "self_improve", "owner": "self.improve"}}
+{"seq": 4, "ts": 1787828512.7422256, "iso": "2026-08-27T11:01:52.742226+00:00", "type": "service.provided", "payload": {"type": "service.provided", "service": "self_improve_rules", "owner": "self.improve"}}
+{"seq": 5, "ts": 1787828512.744224, "iso": "2026-08-27T11:01:52.744224+00:00", "type": "plugin.activated", "payload": {"type": "plugin.activated", "name": "self.improve"}}
+{"seq": 6, "ts": 1787828512.7452252, "iso": "2026-08-27T11:01:52.745225+00:00", "type": "service.provided", "payload": {"type": "service.provided", "service": "mcp_clients", "owner": "mcp"}}
+{"seq": 7, "ts": 1787828512.746225, "iso": "2026-08-27T11:01:52.746225+00:00", "type": "plugin.activated", "payload": {"type": "plugin.activated", "name": "mcp"}}
+{"seq": 8, "ts": 1787828512.747225, "iso": "2026-08-27T11:01:52.747225+00:00", "type": "plugin.activated", "payload": {"type": "plugin.activated", "name": "tools.subagent"}}
+{"seq": 9, "ts": 1787828512.7482252, "iso": "2026-08-27T11:01:52.748225+00:00", "type": "plugin.activated", "payload": {"type": "plugin.activated", "name": "tools.messaging"}}
+{"seq": 10, "ts": 1787828512.7497282, "iso": "2026-08-27T11:01:52.749728+00:00", "type": "plugin.activated", "payload": {"type": "plugin.activated", "name": "tools.workflow"}}
+{"seq": 11, "ts": 1787828512.750853, "iso": "2026-08-27T11:01:52.750853+00:00", "type": "plugin.activated", "payload": {"type": "plugin.activated", "name": "tools.artifact"}}
+{"seq": 12, "ts": 1787828512.7528527, "iso": "2026-08-27T11:01:52.752853+00:00", "type": "plugin.activated", "payload": {"type": "plugin.activated", "name": "tools.memory"}}
+{"seq": 13, "ts": 1787828512.7538548, "iso": "2026-08-27T11:01:52.753855+00:00", "type": "plugin.activated", "payload": {"type": "plugin.activated", "name": "tools.skills"}}
+{"seq": 14, "ts": 1787828512.7836971, "iso": "2026-08-27T11:01:52.783697+00:00", "type": "service.provided", "payload": {"type": "service.provided", "service": "model_adapter", "owner": "test"}}
+{"seq": 15, "ts": 1787828512.8282008, "iso": "2026-08-27T11:01:52.828201+00:00", "type": "tool.executed", "payload": {"type": "tool.executed", "name": "write_file", "status": "ok", "elapsed": 0.0, "cached": false}}
+{"seq": 16, "ts": 1787828512.848495, "iso": "2026-08-27T11:01:52.848495+00:00", "type": "tool.executed", "payload": {"type": "tool.executed", "name": "checkpoint", "status": "ok", "elapsed": 0.0, "cached": false}}
+{"seq": 17, "ts": 1787828512.8771853, "iso": "2026-08-27T11:01:52.877185+00:00", "type": "tool.executed", "payload": {"type": "tool.executed", "name": "write_file", "status": "ok", "elapsed": 0.015, "cached": false}}
+{"seq": 18, "ts": 1787828512.8913324, "iso": "2026-08-27T11:01:52.891332+00:00", "type": "tool.executed", "payload": {"type": "tool.executed", "name": "write_file", "status": "ok", "elapsed": 0.016, "cached": false}}
+{"seq": 19, "ts": 1787828512.9076474, "iso": "2026-08-27T11:01:52.907647+00:00", "type": "tool.executed", "payload": {"type": "tool.executed", "name": "checkpoint", "status": "ok", "elapsed": 0.015, "cached": false}}

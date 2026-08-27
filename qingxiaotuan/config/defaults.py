@@ -25,7 +25,7 @@ def load_builtin_soul() -> str:
 
             return (resources.files("qingxiaotuan.resources") / "SOUL.md").read_text(encoding="utf-8")
         except Exception:
-            return Path(__file__).resolve().parent / "resources" / "SOUL.md"
+            return str(Path(__file__).resolve().parent / "resources" / "SOUL.md")
     except Exception:
         return (
             "你是「青小团」, 用户终端里的 Agent。少客套多做事, 先查再问, "
@@ -226,8 +226,9 @@ DEFAULT_CONFIG: Dict[str, Any] = {
         "read_timeout": 120.0,           # 等待首字节/流式分片的最长空闲
         "max_retries": 3,                # 调用失败自动重试次数 (agent 层指数退避)
         # 速率限制 (适配 OpenCode Zen 免费层: 1 req/s, 10/min, 50次/天 8点重置)
+        # 默认关闭 (opt-in): 付费模型无需限流, 开启后 agent 发送前会主动节流
         "rate_limit": {
-            "enabled": True,
+            "enabled": False,
             "max_requests_per_minute": 10,
             "max_concurrent": 1,
         },
@@ -258,7 +259,7 @@ DEFAULT_CONFIG: Dict[str, Any] = {
             "high":   {"loop_max_iter": 20, "auto_test": True,  "temperature": 0.4},
         },
         # 并发子 Agent (青小团的"多双手"): 把独立子任务派给隔离实例并发执行
-        "subagent_max_workers": 4,        # 子 Agent 并发上限 (1~16)
+        "subagent_max_workers": 5,        # 子 Agent 并发上限 (1~16)
         "subagent_timeout": 180,          # 单个子任务超时 (秒)
         "subagent_isolation": "process",  # process=进程级沙箱(生产默认) / thread=线程软隔离
     },
@@ -306,6 +307,12 @@ DEFAULT_CONFIG: Dict[str, Any] = {
         "network": {
             "allow_domains": [],  # 空列表表示不限制域名
         },
+        # 用户自定义规则表 (对标 Claude Code 的 allow/deny/ask 规则):
+        # 每条 {"tool": 工具名或通配符, "pattern": 可选参数通配符, "action": allow|deny|ask}
+        # pattern 匹配文本: run_shell 取命令行, 其余优先 path/url, 兜底拼接参数值 (小写)。
+        # 优先级: 内置 deny_patterns/网络白名单 > deny > ask > allow > 默认决策;
+        # run_shell 的加固确认 (长命令/docker/fd 重定向等) 不受 allow 规则豁免。
+        "rules": [],
     },
     "memory": {
         "fts_enabled": True,
@@ -316,7 +323,13 @@ DEFAULT_CONFIG: Dict[str, Any] = {
         "auto_inject": True,
         "inject_limit": 3,
     },
-    "cron": {"enabled": True},
+    # 定时任务 (Cron): 无人值守的异步执行能力, 对标 Hermes 的 cron 机制
+    "cron": {
+        "enabled": True,              # 是否启用定时任务子系统
+        "check_interval": 60,         # 守护进程检查到期任务的间隔 (秒)
+        "notify": True,               # 任务执行完成后发送桌面通知
+        "max_output_chars": 4000,     # 会话流中保存的最大输出长度
+    },
     # 后台自主模式 ("手"): 终端不阻塞, 任务在独立会话里自己干活, 进展写进会话流
     "background": {
         "enabled": True,                  # 是否允许 qxt agent / run --bg
@@ -329,15 +342,6 @@ DEFAULT_CONFIG: Dict[str, Any] = {
         "enabled": True,
         "timeout": 30.0,           # 单次 MCP 调用超时 (秒)
         "servers": [],             # MCP server 列表: {name, command, args, env}
-    },
-    # 外部引擎 (ext/c C 程序 + ext/ts TS 模块) 集成层
-    "ext": {
-        "enabled": True,                  # 是否启用外部引擎工具
-        "node_exe": "",                   # node 可执行文件 (空=自动探测)
-        "c_bin_dir": "",                  # qxt_*.exe 目录 (空=ext/dist/bin)
-        "ts_src_dir": "",                 # TS 源码目录 (空=ext/ts)
-        "ts_dist_dir": "",                # TS 编译产物目录 (空=ext/ts/dist)
-        "request_timeout": 60.0,         # 单次 IPC 请求超时 (秒)
     },
     # 自主反思循环 (Reflector): Plan→Execute→Reflect→Re-plan 闭环
     "reflector": {
@@ -355,8 +359,17 @@ DEFAULT_CONFIG: Dict[str, Any] = {
     # 模型路由: 根据任务难度自动选择模型
     "router": {
         "enabled": True,              # 是否启用智能模型路由
+        "auto_switch": True,          # 是否真正自动切换模型 (False=仅 /route 咨询建议)
         "budget_limit": 0.0,          # 成本预算上限 (USD, 0=无限制)
         "difficulty_override": 0,     # 强制指定任务难度 (0=自动评估)
+        # 规划/执行分离 (超越 Claude Code 的多模型经济主线):
+        # 规划首轮用强模型把任务拆清楚, 其余执行轮用便宜模型改代码, 省钱提速。
+        "plan_execute": False,        # 强模型规划 + 便宜模型执行 (默认关, 开启后按 turn 分流)
+        "plan_provider": "",          # 可选: 强制规划阶段的供应商 (留空=按路由选 tier3)
+        "plan_model": "",             # 可选: 强制规划阶段的模型
+        # 卡住升级: 便宜模型连续失败/卡同一错误 → 自动升级强模型救场, 救完降回便宜。
+        "escalate_on_stuck": True,    # 开启卡住自动升级 (默认开)
+        "stuck_threshold": 3,         # 连续失败多少轮后升级到强模型
     },
     # 人机协作: 关键决策点暂停确认
     "collaboration": {
@@ -365,10 +378,41 @@ DEFAULT_CONFIG: Dict[str, Any] = {
         "confirm_external": True,       # 外部 API 调用需确认
         "auto_approve_minor": True,     # 小改动自动批准 (注释/格式/命名)
     },
+    # 界面与回复语言 (十语言: zh-CN/zh-TW/en/ja/ko/es/pt-BR/fr/de/ru)。
+    # 空 = 未配置; 首次交互式使用时弹出编号选择菜单并写回本键。
+    # Agent 对话回复语言同样跟随此值 (见 core/prompts._reply_rule)。
+    "language": "",
     "ui": {
         "theme": "dark",
         "show_token_usage": True,
         "show_cost_report": True,       # 会话结束时显示成本报告
         "show_reflect_summary": True,   # 显示反思摘要
+        # 输出风格 (对标 Claude Code 的 Output Styles):
+        # default / concise / learning, 或自定义风格文件的路径;
+        # 也可放 .qxt/output-style.md 作为工作区级自定义风格。
+        "output_style": "default",
+        # 精确引用跳转使用的编辑器命令 (qxt open / open_file 工具)。
+        # 空 = 自动探测 (优先 VSCode `code`, 否则系统默认应用)。
+        # 可填: code / cursor / subl / 或完整可执行路径 (如 C:\\Program Files\\...\\Code.exe)
+        "editor": "",
+    },
+    # 事务化操作账本 (最小影响半径的事后可逆闭环): 每个修改操作前自动快照,
+    # 执行成功记录变更凭证, 工具异常自动回滚, 支持 /undo 精细撤销 (撤销最近 N 步/指定文件/全部)。
+    "ledger": {
+        "enabled": True,                 # 启用事务化操作账本
+        "snapshot_dir": ".qxt/ledger",   # 快照存储目录 (相对工作区, 已加入 .gitignore 建议)
+        "auto_rollback_on_error": True,  # 工具抛异常时自动从快照恢复 (事务保证, 不留半成品)
+        "keep_snapshots": True,          # 回滚后保留快照 (便于审计); 设为 False 可节省磁盘
+        "max_records": 200,              # 账本内存保留的最大变更凭证数 (超出丢弃最旧)
+        "impact_preview": True,          # 确认提示中展示事前影响半径预览 (将创建/覆盖/删除哪些文件)
+    },
+    "hooks": {
+        # 支持事件: PreToolUse / PostToolUse / UserPromptSubmit / Stop /
+        #   SubagentStop / PreCompact / SessionStart / SessionEnd
+        "enabled": True,                 # 启用用户级 Hooks
+        "default_timeout": 5,            # 单个 hook 脚本超时 (秒), 超时强杀
+        "allow_blocking": True,          # 是否允许 PreToolUse hook 阻断工具执行 (需 hook 显式 blocking=true)
+        "allow_edit_args": False,        # 是否允许 hook 改写工具参数 (默认关 = 更安全)
+        "audit_log": True,               # 把 hook 调用写入审计事件 hook.executed
     },
 }

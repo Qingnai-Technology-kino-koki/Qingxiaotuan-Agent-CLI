@@ -300,14 +300,6 @@ def code_review_quick(ctx: ToolContext, file_path: str = "") -> str:
     return report.to_report()
 
 
-class CodeReviewPlugin:
-    def __init__(self):
-        pass
-
-    def activate(self, kernel):
-        pass
-
-
 from ..core.kernel import Plugin as _Plugin  # noqa: E402
 
 

@@ -1,0 +1,16 @@
+{
+  "job_id": "bg-test-stale",
+  "task": "超时任务",
+  "workspace": "E:\\Qingxiaotuan Agent CLI\\.pytest-tmp\\test_background_store_reconcil0",
+  "profile": "default",
+  "status": "failed",
+  "pid": null,
+  "started_at": 1787828508.4788575,
+  "updated_at": 1787828508.5142095,
+  "heartbeat": 1787828308.4962125,
+  "turns": 0,
+  "result": "",
+  "error": "worker 心跳超时 (>90s)",
+  "session_file": null,
+  "yolo": false
+}

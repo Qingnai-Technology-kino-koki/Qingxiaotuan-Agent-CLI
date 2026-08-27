@@ -63,6 +63,7 @@ def _main() -> int:
         agent = create_agent(
             kernel, workspace, confirm=confirm,
             exclude_tools=tuple(req.get("exclude_tools", [])),
+            system_extra=str(req.get("system_extra", "") or ""),
         )
         if yolo and agent.ctx.on_auto_approve is None:
             agent.ctx.on_auto_approve = lambda _n: None

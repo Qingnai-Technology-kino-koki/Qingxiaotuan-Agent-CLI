@@ -10,6 +10,7 @@ from qingxiaotuan.config import Config, PRESET_PROFILES, load_dotenv
 from qingxiaotuan.models.openai_compat import OpenAICompatAdapter
 from qingxiaotuan.logging_conf import redact, setup_logging
 from qingxiaotuan.core.agent import Agent
+from qingxiaotuan.core.retry import RateLimiter, RetryPolicy
 
 
 # ---------------------------------------------------------------- 预设 profile
@@ -73,7 +74,8 @@ def test_dotenv_loading(tmp_path):
 # ---------------------------------------------------------------- 超时分离
 
 def test_adapter_timeout_separation():
-    with mock.patch("qingxiaotuan.models.openai_compat.OpenAI") as MockOpenAI:
+    import openai
+    with mock.patch.object(openai, "OpenAI") as MockOpenAI:
         adapter = OpenAICompatAdapter(
             base_url="https://opencode.ai/zen/v1",
             model="deepseek-v4-flash-free",
@@ -125,9 +127,9 @@ def test_classify_timeout():
 # ---------------------------------------------------------------- 重试逻辑 (agent 层)
 
 def test_retry_backoff_with_jitter():
-    """验证指数退避+抖动, 且 429 不立即放弃。"""
+    """验证指数退避+抖动, 且 429 不立即放弃 (重试策略已拆到 core/retry.py)。"""
     sleeps = []
-    with mock.patch("qingxiaotuan.core.agent.time.sleep", side_effect=lambda s: sleeps.append(s)):
+    with mock.patch("qingxiaotuan.core.retry.time.sleep", side_effect=lambda s: sleeps.append(s)):
         adapter = mock.MagicMock()
         adapter.chat.side_effect = [
             RuntimeError("Rate limit"),  # 第1次失败
@@ -141,10 +143,9 @@ def test_retry_backoff_with_jitter():
         cfg = Config()
         agent = Agent.__new__(Agent)
         agent.model = adapter
-        agent.max_retries = 3
-        agent.retry_backoff = 2.0
-        agent.retry_jitter = 0.0
-        agent.retry_on = {429, 500, 503}
+        agent.retry_policy = RetryPolicy(max_retries=3, backoff=2.0, jitter=0.0,
+                                         retry_on={429, 500, 503})
+        agent._rate_limiter = RateLimiter(0, 0)  # 禁用限流, 聚焦重试语义
         agent.kernel = kernel
         resp = agent._chat_with_retry([{"role": "user", "content": "x"}], tools=None,
                                        stream=False, on_token=None, on_reason=None)
@@ -154,7 +155,7 @@ def test_retry_backoff_with_jitter():
 
 
 def test_auth_error_immediately_raises():
-    with mock.patch("qingxiaotuan.core.agent.time.sleep"):
+    with mock.patch("qingxiaotuan.core.retry.time.sleep"):
         class AuthExc(Exception):
             status_code = 401
         adapter = mock.MagicMock()
@@ -163,10 +164,9 @@ def test_auth_error_immediately_raises():
         cfg = Config()
         agent = Agent.__new__(Agent)
         agent.model = adapter
-        agent.max_retries = 3
-        agent.retry_backoff = 2.0
-        agent.retry_jitter = 0.0
-        agent.retry_on = {429, 500}
+        agent.retry_policy = RetryPolicy(max_retries=3, backoff=2.0, jitter=0.0,
+                                         retry_on={429, 500})
+        agent._rate_limiter = RateLimiter(0, 0)  # 禁用限流, 聚焦重试语义
         agent.kernel = kernel
         try:
             agent._chat_with_retry([], tools=None, stream=False, on_token=None, on_reason=None)

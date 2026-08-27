@@ -14,7 +14,7 @@ import json
 import time
 import uuid
 from pathlib import Path
-from typing import Any, Dict, List, Optional
+from typing import Any, Dict, List, Optional, cast
 
 
 class SessionStore:
@@ -45,8 +45,66 @@ class SessionStore:
                     messages.append(rec["message"])
         return messages
 
+    @classmethod
+    def sum_usage(cls, path: Path) -> Dict[str, Any]:
+        """聚合会话流中的 usage 增量事件 (对标 Claude Code 的 /cost 跨会话统计)。
+
+        返回:
+        {
+          "prompt_tokens": ..., "completion_tokens": ...,
+          "prompt_cache_hit_tokens": ..., "prompt_cache_miss_tokens": ...,
+          "cost_usd": 累计成本 (缺定价的增量按 0 计),
+          "calls": 调用次数,
+          "models": {"provider/model": tokens 总数, ...},
+        }
+        无 usage 事件时返回空 dict。
+        """
+        totals: Dict[str, int] = {}
+        cost = 0.0
+        calls = 0
+        models: Dict[str, int] = {}
+        if not path.exists():
+            return {}
+        try:
+            with open(path, "r", encoding="utf-8") as f:
+                for line in f:
+                    try:
+                        rec = json.loads(line)
+                    except json.JSONDecodeError:
+                        continue
+                    if rec.get("type") != "usage":
+                        continue
+                    calls += 1
+                    delta = rec.get("delta") or {}
+                    for key, val in delta.items():
+                        if isinstance(val, (int, float)):
+                            totals[key] = totals.get(key, 0) + int(val)
+                    c = rec.get("cost_usd")
+                    if isinstance(c, (int, float)):
+                        cost += float(c)
+                    label = f"{rec.get('provider', '')}/{rec.get('model', '')}"
+                    models[label] = models.get(label, 0) + sum(
+                        int(v) for v in delta.values() if isinstance(v, (int, float))
+                    )
+        except OSError:
+            return {}
+        if not calls:
+            return {}
+        result: Dict[str, Any] = {**totals, "cost_usd": round(cost, 6),
+                                  "calls": calls, "models": models}
+        return result
+
     def list_sessions(self) -> List[Path]:
-        return sorted(self.dir.glob("*.jsonl"), key=lambda p: p.stat().st_mtime, reverse=True)
+        # stat 包在循环内逐个兜底: 遍历间隙被清理掉的会话文件直接跳过,
+        # 否则一个 FileNotFoundError 会让整个列表命令崩掉。
+        stamped: List[tuple[float, Path]] = []
+        for p in self.dir.glob("*.jsonl"):
+            try:
+                stamped.append((p.stat().st_mtime, p))
+            except OSError:
+                continue
+        stamped.sort(key=lambda item: item[0], reverse=True)
+        return [p for _, p in stamped]
 
     @classmethod
     def read_meta(cls, path: Path) -> Optional[Dict[str, Any]]:
@@ -59,7 +117,7 @@ class SessionStore:
                     except json.JSONDecodeError:
                         continue
                     if rec.get("type") == "session.meta":
-                        return rec
+                        return cast(Dict[str, Any], rec)
                     # meta 通常写在最前; 遇到第一条非 meta 业务事件即可停止扫描
                     break
         except OSError:
@@ -71,7 +129,7 @@ class SessionStore:
         """从会话流里取一个可读标题: 优先 session.meta.task, 否则首条 user 消息。"""
         meta = cls.read_meta(path)
         if meta and meta.get("task"):
-            return meta["task"][:60].replace("\n", " ")
+            return str(meta["task"])[:60].replace("\n", " ")
         try:
             with open(path, "r", encoding="utf-8") as f:
                 for line in f:
@@ -80,7 +138,7 @@ class SessionStore:
                     except json.JSONDecodeError:
                         continue
                     if rec.get("type") == "user" and rec.get("message", {}).get("content"):
-                        return rec["message"]["content"][:60].replace("\n", " ")
+                        return str(rec["message"]["content"])[:60].replace("\n", " ")
         except OSError:
             pass
         return ""

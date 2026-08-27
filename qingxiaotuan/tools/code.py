@@ -13,11 +13,14 @@ from __future__ import annotations
 import os
 import re
 import subprocess
+import sys
 from pathlib import Path
-from typing import List
+from typing import List, Optional, cast
 
 from ..context.indexer import CodebaseIndexer
 from ..core.kernel import Kernel, Plugin
+from ..ext.safety_engine import (has_force_push, has_recursive_rm,
+                                 has_win_recursive_delete)
 from .base import Tool, ToolContext, string_prop
 
 
@@ -40,7 +43,7 @@ def codebase_map(ctx: ToolContext, max_tree_lines: int = 80) -> str:
     extra = ""
     if ctx.config("context.pin_codebase", True):
         extra = "\n(系统提示里已包含同款地图, 此工具用于获取最新/更完整的视图)\n"
-    return res.map_text(max_tree_lines=max_tree_lines) + extra
+    return cast(str, res.map_text(max_tree_lines=max_tree_lines)) + extra
 
 
 # 定义位置的常见模式
@@ -135,6 +138,70 @@ def git_status(ctx: ToolContext) -> str:
     return _run(ctx, "git status --short", timeout=15) + "\n" + _run(ctx, "git diff --stat", timeout=15)
 
 
+def _open_in_editor(fpath: Path, line: int, editor: str = "") -> str:
+    """在编辑器/默认应用中打开文件并定位到行。
+
+    优先级: 配置的编辑器 (ui.editor) > 自动探测 VSCode `code` > 系统默认应用。
+    """
+    loc = f"{fpath}:{line}" if line else str(fpath)
+    import shutil
+
+    def _try(editor_cmd: str, goto: bool) -> Optional[str]:
+        """尝试用 editor_cmd 打开; 成功返回描述, 失败返回 None。"""
+        try:
+            if goto:
+                subprocess.Popen([editor_cmd, "--goto", loc],
+                                 stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
+                return f"已在 {Path(editor_cmd).stem} 打开: {loc}"
+            subprocess.Popen([editor_cmd, str(fpath)],
+                             stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
+            return f"已用 {Path(editor_cmd).stem} 打开: {loc}"
+        except OSError:
+            return None
+
+    # 1) 显式配置的编辑器 (支持完整路径或 PATH 命令)
+    if editor:
+        editor = editor.strip()
+        if editor:
+            resolved = editor if os.path.isabs(editor) else shutil.which(editor)
+            if resolved:
+                # 带 --goto 的编辑器 (VSCode 系) 优先; 失败回退到不带参数打开
+                got = _try(resolved, goto=True) or _try(resolved, goto=False)
+                if got:
+                    return got
+    # 2) 自动探测 VSCode
+    code = shutil.which("code")
+    if code:
+        got = _try(code, goto=True)
+        if got:
+            return got
+    # 3) 系统默认应用
+    try:
+        if os.name == "nt":
+            subprocess.Popen(["cmd", "/c", "start", "", str(fpath)],
+                             stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
+        elif sys.platform == "darwin":
+            subprocess.Popen(["open", str(fpath)], stdout=subprocess.DEVNULL,
+                             stderr=subprocess.DEVNULL)
+        else:
+            subprocess.Popen(["xdg-open", str(fpath)], stdout=subprocess.DEVNULL,
+                             stderr=subprocess.DEVNULL)
+        return f"已用默认应用打开: {fpath}" + (f" (第 {line} 行)" if line else "")
+    except OSError:
+        return f"无法打开编辑器, 请手动打开: {loc}"
+
+
+def open_file(ctx: ToolContext, path: str, line: int = 0) -> str:
+    """在编辑器/默认应用中打开文件并定位到指定行 (精确引用跳转)。"""
+    fpath = _resolve(ctx, path)
+    if not fpath.exists():
+        return f"[错误] 文件不存在: {fpath}"
+    if line and line < 1:
+        return "[错误] line 必须 >= 1"
+    editor = ctx.config("ui.editor", "") if hasattr(ctx, "config") else ""
+    return _open_in_editor(fpath, line, editor)
+
+
 # 破坏性命令红名单: 即便 YOLO 模式自动批准, 这些也绝不经由只读/自测工具执行,
 # 必须由用户显式走确认路径 (shell 工具/危险工具) 才能跑, 防误炸工作区或远端。
 _DANGEROUS_PATTERNS = (
@@ -151,9 +218,11 @@ _DANGEROUS_PATTERNS = (
 
 
 def _looks_dangerous(command: str) -> bool:
-    import re as _re
+    """破坏性判定: 正则名单 + safety 引擎 token 化红线 (覆盖 rm -r -f / push -f 等变体)。"""
     c = command.strip()
     if c.startswith("sudo ") or c.startswith("su "):
+        return True
+    if has_recursive_rm(c) or has_force_push(c) or has_win_recursive_delete(c):
         return True
     return any(p.search(c) for p in (re.compile(p) for p in _DANGEROUS_PATTERNS))
 
@@ -259,4 +328,17 @@ class CodeToolPlugin(Plugin):
             description="只读查看 git 改动 (status+diff)",
             parameters={"type": "object", "properties": {}, "required": []},
             handler=git_status, group="code", read_only=True,
+        ))
+        registry.register(Tool(
+            name="open_file",
+            description="在编辑器/默认应用中打开文件并定位到行 (精确引用跳转, 供开发者查看)",
+            parameters={
+                "type": "object",
+                "properties": {
+                    "path": string_prop("文件路径 (相对于工作区)"),
+                    "line": {"type": "integer", "description": "目标行号, 默认 0=文件开头"},
+                },
+                "required": ["path"],
+            },
+            handler=open_file, group="code", read_only=True,
         ))

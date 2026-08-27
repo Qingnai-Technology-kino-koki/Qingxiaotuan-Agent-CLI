@@ -47,3 +47,33 @@ def test_event_stream_is_append_only():
     assert "plugin.registered" in seen
     assert "plugin.activated" in seen
     assert len(k.events) == len({e.seq for e in k.events})  # seq 单调唯一
+
+
+def test_event_overflow_callback():
+    """事件历史上限时, on_event_overflow 被调用且收到被丢弃的事件列表。"""
+    from qingxiaotuan.core.kernel import _MAX_EVENTS
+    evicted_log: list = []
+    k = Kernel(on_event_overflow=lambda evicted: evicted_log.extend(evicted))
+    # 发射 _MAX_EVENTS + 5 条事件, 触发截断
+    for i in range(_MAX_EVENTS + 5):
+        k.emit("test.overflow", {"i": i})
+    assert len(k.events) <= _MAX_EVENTS
+    assert len(evicted_log) == 5
+    # 被丢弃的事件 seq 应是最早的
+    assert evicted_log[0].seq == 1
+    assert evicted_log[-1].seq == 5
+
+
+def test_event_overflow_emits_notification():
+    """事件溢出时自动发射 event.overflow 事件 (每次截断触发一次)。"""
+    from qingxiaotuan.core.kernel import _MAX_EVENTS
+    overflow_events: list = []
+    k = Kernel()
+    k.on("event.overflow", lambda e: overflow_events.append(e))
+    for i in range(_MAX_EVENTS + 3):
+        k.emit("test.ping", {"i": i})
+    # 每次 emit 超出上限都触发一次溢出通知 (增量截断)
+    assert len(overflow_events) >= 1
+    last = overflow_events[-1]
+    assert last["evicted"] >= 1
+    assert last["remaining"] <= _MAX_EVENTS

@@ -1,20 +1,23 @@
-"""纯 Python 引擎注册中心 (替代 ext/c/*.exe 和 ext/ts/src/*/main.ts)
+"""纯 Python 引擎注册中心
 
 统一注册所有 Python 实现的外部能力引擎, 通过 JSONL IPC 协议与内核对话。
 引擎列表:
 - diff: 行/词级 Myers diff + patch + 3-way merge
-- crypto: AES-256-GCM 加解密 + PBKDF2-HMAC-SHA256
+- crypto: PBKDF2-HMAC-SHA256 派生 + SHA256-keystream 流式加密 + 指纹
 - index: FNV-1a 增量符号索引
 - ansi: 终端转义解析/剥离/渲染
 - safety: 最小影响半径护栏: 风险评分 + blast radius
 - json: RFC 6901 Pointer / 逐路径 diff / 深合并
 - search: 递归正则检索
 - notify: 跨平台桌面通知
+- rules: YAML 规则策略校验 (无 eval 安全表达式)
+- skill-market: 技能包 registry: 拉取 / 发布 / 检索
 """
 import json
 import os
 import sys
 import subprocess
+from typing import Optional
 
 
 # 引擎映射: name -> (module_path, class_name)
@@ -45,7 +48,7 @@ def get_engine(name: str):
     return cls()
 
 
-def engine_healthcheck(name: str = None):
+def engine_healthcheck(name: Optional[str] = None) -> dict:
     """健康检查所有或指定引擎"""
     results = {}
     engines = [name] if name else ENGINE_NAMES

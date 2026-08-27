@@ -7,17 +7,16 @@
 from __future__ import annotations
 
 import json
+from typing import Any, Tuple
 
-from rich.console import Console
 from rich.table import Table
 
 from ..app import build_kernel
 from ..self_improve.plugin import SelfImprovePlugin
+from ..ui.plain_console import console
 
-console = Console()
 
-
-def _load_service(args) -> object:
+def _load_service(args) -> Tuple[Any, Any]:
     kernel = build_kernel(profile=getattr(args, "profile", "default"),
                            patch_file=getattr(args, "patch", None))
     # 确保插件已激活 (build_kernel 已 activate_all)
@@ -33,7 +32,7 @@ def _load_service(args) -> object:
 def cmd_improve(args) -> int:
     svc, kernel = _load_service(args)
     if svc is None:
-        console.print("[red]self_improve 服务不可用。[/]")
+        console.print("self_improve 服务不可用。")
         return 1
     sub = getattr(args, "improve_cmd", None)
     if sub == "apply":
@@ -44,41 +43,41 @@ def cmd_improve(args) -> int:
 def _do_summarize(svc) -> int:
     data = svc.summarize()
     n = data.get("total_experiences", 0)
-    console.print(f"[bold cyan]自我改进复盘[/] — 共抽取 [yellow]{n}[/] 条经验\n")
+    console.print(f"自我改进复盘 — 共抽取 {n} 条经验\n")
     exps = data.get("experiences", [])
     if exps:
         t = Table(title="经验", show_lines=False)
-        t.add_column("类型", style="magenta")
-        t.add_column("工具", style="cyan")
-        t.add_column("频次", style="green")
-        t.add_column("摘要", style="dim")
+        t.add_column("类型")
+        t.add_column("工具")
+        t.add_column("频次")
+        t.add_column("摘要")
         for e in exps:
             t.add_row(e.get("kind", "?"), e.get("tool", "?"), str(e.get("count", 1)), e.get("summary", ""))
         console.print(t)
     else:
-        console.print("[dim]（暂无经验 —— 多跑几次任务后这里会积累可改进点）[/]")
-    console.print("\n[bold]将生成的规则预览:[/]")
+        console.print("（暂无经验 —— 多跑几次任务后这里会积累可改进点）")
+    console.print("\n将生成的规则预览:")
     console.print(data.get("rule_preview", "（无）"))
     if data.get("skill_draft_candidates"):
-        console.print(f"\n[bold]技能草稿候选:[/] {', '.join(data['skill_draft_candidates'])}")
-    console.print("\n[dim]以上为 dry-run, 执行 `qxt improve apply` 才会落盘。[/]")
+        console.print(f"\n技能草稿候选: {', '.join(data['skill_draft_candidates'])}")
+    console.print("\n以上为 dry-run, 执行 `qxt improve apply` 才会落盘。")
     return 0
 
 
 def _do_apply(svc) -> int:
     data = svc.apply()
-    console.print("[bold green]已应用自我改进[/]\n")
+    console.print("已应用自我改进\n")
     if data.get("rules_written"):
-        console.print(f"[green]规则文件:[/] {data['rules_written']} ({data['rules_count']} 条)")
+        console.print(f"规则文件: {data['rules_written']} ({data['rules_count']} 条)")
     else:
-        console.print("[dim]规则: 无新规则生成[/]")
+        console.print("规则: 无新规则生成")
     drafts = data.get("skill_drafts") or []
     if drafts:
-        console.print(f"[green]技能草稿:[/] {len(drafts)} 个")
+        console.print(f"技能草稿: {len(drafts)} 个")
         for p in drafts:
             console.print(f"  - {p}")
-        console.print("[yellow]技能草稿为 DRAFT 状态, 需人工审阅后启用。[/]")
+        console.print("技能草稿为 DRAFT 状态, 需人工审阅后启用。")
     else:
-        console.print("[dim]技能: 无新草稿[/]")
-    console.print(f"\n[dim]基于 {data.get('experiences', 0)} 条经验。[/]")
+        console.print("技能: 无新草稿")
+    console.print(f"\n基于 {data.get('experiences', 0)} 条经验。")
     return 0

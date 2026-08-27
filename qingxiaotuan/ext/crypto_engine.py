@@ -1,6 +1,7 @@
-"""纯 Python 实现 crypto 引擎 (替代 ext/c/crypto.c)
-使用标准库 hashlib/hmac 实现 AES-256 加密 + PBKDF2 派生 + 指纹
-不依赖外部 cryptography 库
+"""纯 Python 实现 crypto 引擎
+使用标准库 hashlib/hmac/secrets 实现 PBKDF2 密钥派生 + SHA256-keystream 流式加密
++ 指纹 + HMAC 签名校验 + 随机令牌
+不依赖外部 cryptography 库 (流式加密为轻量 CTR 风格替代, 非 AES)
 """
 import json
 import sys
@@ -8,7 +9,19 @@ import os
 import hashlib
 import hmac
 import base64
-from typing import Any, Dict
+import secrets
+
+# PBKDF2 迭代次数下限: 低于此值视为配置错误而非兼容需求
+_MIN_ITERATIONS = 1000
+
+
+def _check_iterations(value) -> int:
+    """校验迭代次数为正整数且不低于下限。"""
+    if not isinstance(value, int) or isinstance(value, bool) or value <= 0:
+        raise ValueError("iterations 必须是正整数")
+    if value < _MIN_ITERATIONS:
+        raise ValueError(f"iterations 不得低于 {_MIN_ITERATIONS} (防弱化)")
+    return value
 
 
 def _derive_key(passphrase: str, salt: bytes, iterations: int = 100000) -> bytes:
@@ -46,15 +59,19 @@ class CryptoEngine:
             "open": self.open,
             "derive_key": self.derive_key,
             "fingerprint": self.fingerprint,
+            "hmac_sign": self.hmac_sign,
+            "hmac_verify": self.hmac_verify,
+            "random_token": self.random_token,
             "_meta/list": self.list_methods,
         }
 
     def list_methods(self, params=None):
         return {
             "engine": "crypto",
-            "version": "1.0.0-python",
+            "version": "1.1.0-python",
             "methods": list(self.methods.keys()),
-            "capabilities": ["pbkdf2_sha256", "stream_cipher", "sha256_fingerprint"],
+            "capabilities": ["pbkdf2_sha256", "stream_cipher", "sha256_fingerprint",
+                             "hmac_sign_verify", "random_token"],
         }
 
     def seal(self, params):
@@ -62,7 +79,7 @@ class CryptoEngine:
         passphrase = params.get("passphrase", "")
         salt_b64 = params.get("salt_b64", "")
         plaintext = params.get("plaintext", "")
-        iterations = params.get("iterations", 100000)
+        iterations = _check_iterations(params.get("iterations", 100000))
 
         salt = base64.b64decode(salt_b64) if salt_b64 else os.urandom(16)
         key = _derive_key(passphrase, salt, iterations)
@@ -88,7 +105,7 @@ class CryptoEngine:
         ciphertext_b64 = params.get("ciphertext_b64", "")
         iv_b64 = params.get("iv_b64", "")
         mac_b64 = params.get("mac_b64", "")
-        iterations = params.get("iterations", 100000)
+        iterations = _check_iterations(params.get("iterations", 100000))
 
         salt = base64.b64decode(salt_b64)
         ciphertext = base64.b64decode(ciphertext_b64)
@@ -100,14 +117,19 @@ class CryptoEngine:
                 raise ValueError("tag mismatch: 密码错误或密文被篡改")
         plaintext = _xor_stream(ciphertext, key)
 
-        return {"plaintext": plaintext.decode()}
+        try:
+            text = plaintext.decode()
+        except UnicodeDecodeError:
+            raise ValueError(
+                "解密结果不是有效 UTF-8: 密码错误且未提供 mac 校验, 或密文来源不符")
+        return {"plaintext": text}
 
     def derive_key(self, params):
         """派生密钥"""
         passphrase = params.get("passphrase", "")
         salt_b64 = params.get("salt_b64", "")
-        iterations = params.get("iterations", 100000)
-        length = params.get("length", 32)
+        iterations = _check_iterations(params.get("iterations", 100000))
+        length = int(params.get("length", 32))
 
         salt = base64.b64decode(salt_b64) if salt_b64 else os.urandom(16)
         key = _derive_key(passphrase, salt, iterations)
@@ -122,6 +144,44 @@ class CryptoEngine:
             data = data.encode()
         fp = _fingerprint(data)
         return {"fingerprint": fp, "algorithm": "sha256"}
+
+    @staticmethod
+    def _resolve_key(params) -> bytes:
+        """从 key_b64 或 passphrase+salt_b64 解析 HMAC 密钥。"""
+        key_b64 = params.get("key_b64", "")
+        if key_b64:
+            return base64.b64decode(key_b64)
+        passphrase = params.get("passphrase", "")
+        salt_b64 = params.get("salt_b64", "")
+        salt = base64.b64decode(salt_b64) if salt_b64 else b"qxt-hmac"
+        iterations = _check_iterations(params.get("iterations", 100000))
+        return _derive_key(passphrase, salt, iterations)
+
+    def hmac_sign(self, params):
+        """HMAC-SHA256 签名: key_b64 (或 passphrase+salt_b64) + data -> mac_b64"""
+        data = params.get("data", "")
+        raw = data.encode() if isinstance(data, str) else data
+        key = self._resolve_key(params)
+        mac = hmac.new(key, raw, hashlib.sha256).digest()
+        return {"mac_b64": base64.b64encode(mac).decode(), "algorithm": "hmac-sha256"}
+
+    def hmac_verify(self, params):
+        """HMAC 校验 (恒定时间比较): {valid: true/false}, 不泄露差异位置"""
+        data = params.get("data", "")
+        raw = data.encode() if isinstance(data, str) else data
+        key = self._resolve_key(params)
+        mac_given = base64.b64decode(params.get("mac_b64", ""))
+        expected = hmac.new(key, raw, hashlib.sha256).digest()
+        return {"valid": hmac.compare_digest(expected, mac_given),
+                "algorithm": "hmac-sha256"}
+
+    def random_token(self, params):
+        """URL 安全随机令牌 (secrets 模块), length 为字节数 (默认 32, 上限 1024)"""
+        length = int(params.get("length", 32))
+        if not 1 <= length <= 1024:
+            raise ValueError("length 必须在 1-1024 字节之间")
+        token = secrets.token_urlsafe(length)
+        return {"token": token, "bytes": length}
 
     def handle(self, line):
         try:

@@ -82,6 +82,10 @@ def test_write_command_detection():
     assert _is_readonly_command("pip install requests") is False
     assert _is_readonly_command("mkdir newdir") is False
     assert _is_readonly_command("cp a b") is False
+    # fail-closed: 无法识别的命令一律视为修改类 (宁可多拦不误放)
+    assert _is_readonly_command("node script.js") is False
+    assert _is_readonly_command("./deploy.sh --prod") is False
+    assert _is_readonly_command("sed -i 's/a/b/' f.txt") is False
 
 
 def test_run_shell_blocked_in_plan_mode():

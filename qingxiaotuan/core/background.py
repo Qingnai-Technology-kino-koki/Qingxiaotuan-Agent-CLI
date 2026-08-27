@@ -17,6 +17,7 @@
 
 from __future__ import annotations
 
+import logging
 import threading
 import time
 import uuid
@@ -32,6 +33,8 @@ from .agent import Agent
 from .markers import is_done
 from ..memory.sessions import SessionStore
 from .background_store import BackgroundStore
+
+log = logging.getLogger(__name__)
 
 
 @dataclass
@@ -63,7 +66,8 @@ class BackgroundJob:
         """最近 n 条会话流的文本摘要 (供 bg logs 查看进展)。"""
         try:
             lines = self.store.file.read_text(encoding="utf-8").splitlines()
-        except Exception:
+        except Exception as exc:
+            log.debug("读取后台会话流失败 (%s): %s", self.store.file, exc)
             return []
         out: List[str] = []
         for ln in lines[-n * 3:]:
@@ -92,7 +96,7 @@ class BackgroundRunner:
         self.workspace = workspace
         self._jobs: Dict[str, BackgroundJob] = {}
         self._lock = threading.Lock()
-        self._enabled = config.get("background.enabled", True)
+        self._enabled = bool(config.get("background.enabled", True))
         self._store = BackgroundStore(config.home)
 
     @property
@@ -105,8 +109,14 @@ class BackgroundRunner:
         confirm: Optional[Callable[[str], bool]] = None,
         stream: bool = False,
         on_progress: Optional[Callable[[str, str], None]] = None,
+        exclude_tools: tuple = (),
+        system_extra: str = "",
     ) -> BackgroundJob:
-        """提交一个后台任务, 立即返回 job 句柄 (不阻塞)。"""
+        """提交一个后台任务, 立即返回 job 句柄 (不阻塞)。
+
+        exclude_tools / system_extra 供 task 工具的后台模式透传
+        子代理类型的能力边界与角色指令 (默认空, 向后兼容)。
+        """
         if not self._enabled:
             raise RuntimeError("后台模式已在配置中关闭 (background.enabled=false)")
         job_id = "bg-" + uuid.uuid4().hex[:8]
@@ -126,6 +136,8 @@ class BackgroundRunner:
             config=self.config,
             workspace=self.workspace,
             confirm=confirm,
+            exclude_tools=exclude_tools,
+            system_extra=system_extra,
         )
         # 让 Agent 的进度写入后台会话流 (而非主会话)
         agent.session = store
@@ -239,7 +251,7 @@ class BackgroundRunner:
         # config.home 可能缺失 (如测试/异常配置), 用 workspace 兜底, 避免 getter 崩溃。
         _ch = getattr(self.config, "home", None)
         _ws = getattr(self, "workspace", None)
-        home = Path(_ch if _ch is not None else _ws)
+        home = Path(str(_ch if _ch is not None else _ws))
         session = SessionStore(home)
         # session_file 在 manifest 中显式存为 None 时, dict.get 会返回 None 而非默认路径,
         # 故用 `or` 兜底 (None / 空串都回退到默认会话文件)。
@@ -336,3 +348,22 @@ class BackgroundRunner:
                 self._store.update(job_id, status="failed",
                                    error=f"恢复重启失败: {type(exc).__name__}: {exc}")
         return restarted
+
+
+# ---------------------------------------------------------------- CLI 便捷入口
+
+def submit_background(kernel: Kernel, agent: Agent, task: str, workspace: str) -> str:
+    """模块级便捷函数: 提交后台任务并返回 job_id (供 cli/commands 调用)。"""
+    runner = BackgroundRunner(kernel, kernel.require("config"), workspace)
+    return runner.submit(task).job_id
+
+
+def wait_for_job(kernel: Kernel, job_id: str, timeout: float = 0) -> str:
+    """模块级便捷函数: 阻塞等待后台任务结束, 返回结果文本 (供 cli/commands 调用)。"""
+    config = kernel.require("config")
+    workspace = getattr(config, "workspace", None) or os.getcwd()
+    runner = BackgroundRunner(kernel, config, workspace)
+    job = runner.wait(job_id, timeout=timeout or None)
+    if job is None:
+        return f"任务 {job_id} 未找到"
+    return job.result or job.error or "(无输出)"

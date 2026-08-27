@@ -20,6 +20,7 @@ from __future__ import annotations
 
 import json
 import os
+import tempfile
 from typing import Any, Dict, List, Optional
 
 
@@ -33,12 +34,25 @@ class SelfImproveRuleStore:
 
     # ---------------------------------------------------------- 落盘/加载
     def write(self, rules: List[Dict[str, Any]], fname: str = "self_improve.jsonl") -> str:
+        """把规则原子写入 JSONL (临时文件 + os.replace, 崩溃不留下半截文件)。"""
         path = os.path.join(os.path.dirname(self._path), fname) if os.path.isdir(self._path) \
             else self._path
-        os.makedirs(os.path.dirname(path), exist_ok=True)
-        with open(path, "w", encoding="utf-8") as f:
-            for r in rules:
-                f.write(json.dumps(r, ensure_ascii=False) + "\n")
+        parent = os.path.dirname(path) or "."
+        os.makedirs(parent, exist_ok=True)
+        fd, temp_name = tempfile.mkstemp(prefix=os.path.basename(path) + ".", suffix=".tmp",
+                                         dir=parent)
+        try:
+            with os.fdopen(fd, "w", encoding="utf-8") as f:
+                for r in rules:
+                    f.write(json.dumps(r, ensure_ascii=False) + "\n")
+                f.flush()
+                os.fsync(f.fileno())
+            os.replace(temp_name, path)
+        finally:
+            try:
+                os.unlink(temp_name)
+            except FileNotFoundError:
+                pass
         self._path = path
         self._rules = list(rules)
         self._loaded = True

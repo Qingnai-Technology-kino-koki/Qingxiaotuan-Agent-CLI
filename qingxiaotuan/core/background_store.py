@@ -7,13 +7,16 @@
 from __future__ import annotations
 
 import json
+import logging
 import os
 import signal
 import subprocess
 import tempfile
 import time
 from pathlib import Path
-from typing import Any, Dict, List, Optional
+from typing import Any, Dict, List, Optional, cast
+
+log = logging.getLogger(__name__)
 
 
 def _is_process_alive(pid: int) -> bool:
@@ -43,7 +46,7 @@ def _is_process_alive(pid: int) -> bool:
         return False
 
 
-def kill_process_tree(pid: int) -> bool:
+def kill_process_tree(pid: int, timeout: float = 10.0) -> bool:
     """跨平台终止进程及其整个子进程树, 返回是否发出过终止信号。
 
     优先级: 进程组级终止 (连根拔起, 避免孤儿工具子进程继续干活) > 单进程终止。
@@ -54,15 +57,22 @@ def kill_process_tree(pid: int) -> bool:
     try:
         if os.name == "nt":
             # Windows: taskkill /T 递归杀整棵树; /F 强制。
-            subprocess.run(
-                ["taskkill", "/PID", str(pid), "/T", "/F"],
-                stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL,
-                creationflags=getattr(subprocess, "CREATE_NO_WINDOW", 0),
-            )
+            try:
+                result = subprocess.run(
+                    ["taskkill", "/PID", str(pid), "/T", "/F"],
+                    stdout=subprocess.DEVNULL, stderr=subprocess.PIPE,
+                    timeout=timeout, text=True,
+                    creationflags=getattr(subprocess, "CREATE_NO_WINDOW", 0),
+                )
+                if result.returncode != 0:
+                    log.debug("taskkill 未成功 (rc=%s): %s",
+                              result.returncode, (result.stderr or "").strip())
+            except subprocess.TimeoutExpired:
+                log.warning("taskkill 超时 (pid=%s, timeout=%ss)", pid, timeout)
         else:
             # POSIX: 杀整个进程组 (worker 以新进程组启动)。
             try:
-                os.killpg(os.getpgid(pid), signal.SIGTERM)
+                os.killpg(os.getpgid(pid), signal.SIGTERM)  # type: ignore[attr-defined]
             except (ProcessLookupError, PermissionError):
                 os.kill(pid, signal.SIGTERM)
         return True
@@ -113,7 +123,7 @@ class BackgroundStore:
 
     def get(self, job_id: str) -> Optional[Dict[str, Any]]:
         try:
-            return json.loads(self.path(job_id).read_text(encoding="utf-8"))
+            return cast(Dict[str, Any], json.loads(self.path(job_id).read_text(encoding="utf-8")))
         except (FileNotFoundError, json.JSONDecodeError, OSError):
             return None
 

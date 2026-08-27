@@ -1,0 +1,13 @@
+{"seq": 1, "ts": 1787828697.3168814, "iso": "2026-08-27T11:04:57.316881+00:00", "type": "audit.ready", "payload": {"type": "audit.ready", "enabled": true, "persist": true}}
+{"seq": 2, "ts": 1787828697.3218794, "iso": "2026-08-27T11:04:57.321879+00:00", "type": "plugin.activated", "payload": {"type": "plugin.activated", "name": "audit"}}
+{"seq": 3, "ts": 1787828697.3258796, "iso": "2026-08-27T11:04:57.325880+00:00", "type": "service.provided", "payload": {"type": "service.provided", "service": "self_improve", "owner": "self.improve"}}
+{"seq": 4, "ts": 1787828697.329289, "iso": "2026-08-27T11:04:57.329289+00:00", "type": "service.provided", "payload": {"type": "service.provided", "service": "self_improve_rules", "owner": "self.improve"}}
+{"seq": 5, "ts": 1787828697.3314548, "iso": "2026-08-27T11:04:57.331455+00:00", "type": "plugin.activated", "payload": {"type": "plugin.activated", "name": "self.improve"}}
+{"seq": 6, "ts": 1787828697.3334517, "iso": "2026-08-27T11:04:57.333452+00:00", "type": "service.provided", "payload": {"type": "service.provided", "service": "mcp_clients", "owner": "mcp"}}
+{"seq": 7, "ts": 1787828697.3344538, "iso": "2026-08-27T11:04:57.334454+00:00", "type": "plugin.activated", "payload": {"type": "plugin.activated", "name": "mcp"}}
+{"seq": 8, "ts": 1787828697.3364549, "iso": "2026-08-27T11:04:57.336455+00:00", "type": "plugin.activated", "payload": {"type": "plugin.activated", "name": "tools.subagent"}}
+{"seq": 9, "ts": 1787828697.3374562, "iso": "2026-08-27T11:04:57.337456+00:00", "type": "plugin.activated", "payload": {"type": "plugin.activated", "name": "tools.messaging"}}
+{"seq": 10, "ts": 1787828697.3384552, "iso": "2026-08-27T11:04:57.338455+00:00", "type": "plugin.activated", "payload": {"type": "plugin.activated", "name": "tools.workflow"}}
+{"seq": 11, "ts": 1787828697.3394537, "iso": "2026-08-27T11:04:57.339454+00:00", "type": "plugin.activated", "payload": {"type": "plugin.activated", "name": "tools.artifact"}}
+{"seq": 12, "ts": 1787828697.3404524, "iso": "2026-08-27T11:04:57.340452+00:00", "type": "plugin.activated", "payload": {"type": "plugin.activated", "name": "tools.memory"}}
+{"seq": 13, "ts": 1787828697.3424518, "iso": "2026-08-27T11:04:57.342452+00:00", "type": "plugin.activated", "payload": {"type": "plugin.activated", "name": "tools.skills"}}

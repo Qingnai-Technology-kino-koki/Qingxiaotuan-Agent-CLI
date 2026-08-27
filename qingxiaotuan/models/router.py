@@ -18,7 +18,10 @@ import json
 import logging
 import time
 from dataclasses import dataclass, field
-from typing import Any, Dict, List, Optional, Tuple
+from typing import TYPE_CHECKING, Any, Dict, List, Optional, Tuple
+
+if TYPE_CHECKING:
+    from qingxiaotuan.tools.base import ToolContext
 
 log = logging.getLogger("qingxiaotuan.router")
 
@@ -321,7 +324,7 @@ class ModelRouter:
         - 复杂任务: 架构设计、安全审计、性能优化
         """
         text = (task + " " + context).lower()
-        score = 5  # 默认中等
+        score: float = 5  # 默认中等
 
         # 简单任务关键词 (-2~3)
         easy_keywords = ["查询", "总结", "列出", "查看", "显示", "格式化",
@@ -449,6 +452,112 @@ class ModelRouter:
                 return f"~${cost:.4f}"
         return "未知"
 
+    # ------------------------------------------------------------ 自动路由决策
+
+    @staticmethod
+    def available_provider_names() -> List[str]:
+        """返回当前环境「已配置密钥」的供应商名。
+
+        失败保险的核心: 自动路由**绝不**切换到用户没有配置密钥的供应商,
+        否则会无声地把请求发到一个无凭证的端点 (认证失败/意外扣费)。
+        免费档 (如 deepseek-v4-flash-free) 也依赖 api_key_env, 未设置则同样排除。
+        """
+        import os
+
+        names: set = set()
+        for p in MODEL_PRESETS:
+            env = p.api_key_env
+            if env and os.environ.get(env):
+                names.add(p.provider)
+        return sorted(names)
+
+    def _preset_for(self, provider: Optional[str], model: Optional[str]):
+        """按 (provider, model) 精确匹配预设; model 为空时退化为 provider 任一匹配。"""
+        for p in self._available_presets:
+            if p.provider == provider and p.model == model:
+                return p
+        if not model:
+            for p in self._available_presets:
+                if p.provider == provider:
+                    return p
+        return None
+
+    def decide(
+        self,
+        task: str,
+        context: str = "",
+        current_provider: Optional[str] = None,
+        current_model: Optional[str] = None,
+        has_images: bool = False,
+        available_providers: Optional[List[str]] = None,
+        difficulty_override: int = 0,
+    ) -> Dict[str, Any]:
+        """能力感知的自动路由决策: 返回是否应切换模型及目标。
+
+        决策规则 (省钱 + 不降质 + 失败保险):
+        - 当前为自定义模型 (不在预设) → 不切换, 尊重用户指定的"脑子"。
+        - 当前模型不足以应对难度, 或缺少必需能力 (如挂图需 vision) → 升级到更合适的模型。
+        - 存在更便宜且仍能胜任的模型且已配置密钥 → 降级省钱。
+        - 否则保持当前模型 (避免无谓切换与抖动)。
+        """
+        difficulty = difficulty_override or self.estimate_difficulty(task, context)
+        required = ["vision"] if has_images else None
+        chosen_provider, chosen_model = self.select_model(
+            difficulty, available_providers=available_providers, required_capabilities=required
+        )
+        chosen = self._preset_for(chosen_provider, chosen_model)
+        current = self._preset_for(current_provider, current_model)
+
+        if current is None:
+            # 自定义/未知模型: 尊重用户选择, 不自动路由 (避免切到无凭证的预设模型)
+            return self._decision(chosen, difficulty, False, "当前为自定义模型, 不自动路由 (尊重用户指定)")
+
+        if available_providers is not None and not available_providers:
+            # 失败保险: 显式传入的可用供应商为空 (没有任何供应商配置了密钥)
+            # → 绝不自动切换, 保持当前模型 (否则会把请求发到无凭证的端点)
+            return self._decision(current, difficulty, False,
+                                  "无已配置密钥的供应商, 保持当前模型 (失败保险)")
+
+        if available_providers is not None and chosen_provider not in available_providers:
+            # 失败保险 (二): 候选为空时 select_model 会回退默认模型, 该默认可能
+            # 不在可用列表内 —— 同样绝不切换, 否则会把请求发到无凭证端点
+            # (例如仅配置 ARK_API_KEY 时, 高难度任务曾回退并切到无密钥的 deepseek)。
+            return self._decision(current, difficulty, False,
+                                  "路由目标未配置密钥, 保持当前模型 (失败保险)")
+
+        if (chosen_provider, chosen_model) == (current_provider, current_model):
+            return self._decision(chosen, difficulty, False, "当前模型已是最优路由")
+
+        # 当前不足以应对难度, 或被要求能力缺失 → 升级
+        missing_cap = bool(required) and not all(c in current.capabilities for c in (required or []))
+        if current.max_difficulty < difficulty or missing_cap:
+            if missing_cap:
+                reason = (f"切换到 {chosen_provider}/{chosen_model} "
+                          f"(当前模型不支持必需能力: {', '.join(required or [])})")
+            else:
+                reason = f"升级到 {chosen_provider}/{chosen_model} (难度 {difficulty} 超出当前模型能力)"
+            return self._decision(chosen, difficulty, True, reason)
+
+        # 更便宜且仍胜任 → 降级省钱
+        if chosen.tier < current.tier and chosen.max_difficulty >= difficulty:
+            reason = (f"降级到更便宜的 {chosen_provider}/{chosen_model} 以节省成本 "
+                      f"(难度 {difficulty})")
+            return self._decision(chosen, difficulty, True, reason)
+
+        # 路由目标更贵且无额外能力 → 不切换
+        return self._decision(chosen, difficulty, False, "保持当前模型 (路由目标更贵且无额外能力)")
+
+    def _decision(self, chosen, difficulty: int, switch: bool, reason: str) -> Dict[str, Any]:
+        return {
+            "difficulty": difficulty,
+            "provider": chosen.provider if chosen else self.default_provider,
+            "model": chosen.model if chosen else self.default_model,
+            "base_url": chosen.base_url if chosen else "",
+            "api_key_env": chosen.api_key_env if chosen else "",
+            "capabilities": list(chosen.capabilities) if chosen else [],
+            "switch": switch,
+            "reason": reason,
+        }
 
 # ---- 工具函数 ----
 
@@ -491,7 +600,7 @@ def cost_report(ctx: ToolContext) -> str:
     tracker = ctx.kernel.get("cost_tracker")
     if tracker is None:
         return "暂无成本记录"
-    return tracker.summary()
+    return str(tracker.summary())
 
 
 def estimate_cost(

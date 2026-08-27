@@ -3,6 +3,7 @@
 from ..core.kernel import Kernel, Plugin
 from .base import Tool, ToolContext, ToolRegistry
 from .cache import ToolResultCache
+from .checkpoint import CheckpointPlugin
 from .filesystem import FilesystemPlugin
 from .memory_tool import MemoryToolPlugin
 from .shell import ShellPlugin
@@ -10,6 +11,8 @@ from .skill_tool import SkillToolPlugin
 from .web import WebPlugin
 from .code import CodeToolPlugin
 from .dispatch import DispatchPlugin
+from .task_tool import TaskToolPlugin
+from .session_tools import SessionToolsPlugin
 from .mcp.plugin import MCPPlugin
 from .pipeline import PipelinePlugin
 from .code_review import CodeReviewPlugin
@@ -44,5 +47,8 @@ def builtin_tool_plugins():
         FilesystemPlugin(), ShellPlugin(), WebPlugin(),
         MemoryToolPlugin(), SkillToolPlugin(), CodeToolPlugin(),
         DispatchPlugin(), PipelinePlugin(), CodeReviewPlugin(),
-        ExternalToolsPlugin(), LanguagePlugin(),
+        ExternalToolsPlugin(), LanguagePlugin(), CheckpointPlugin(),
+        TaskToolPlugin(),
+        SessionToolsPlugin(),
     ]
+

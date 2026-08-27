@@ -1,7 +1,6 @@
-"""外部引擎集成测试: 验证 Python 内核通过 JSONL IPC 驱动 ext/c 与 ext/ts。
+"""外部引擎集成测试: 验证 Python 内核通过 JSONL IPC 驱动 qingxiaotuan/ext 纯 Python 引擎。
 
-这些测试依赖真实编译产物 (ext/dist/bin/qxt_*.exe) 与 node (跑 TS 模块)。
-若环境缺少其中一项, 对应引擎会被 ExternalEngineManager 自动跳过, 相关测试 skip。
+若某引擎在当前环境不可用, ExternalEngineManager 会自动跳过, 相关测试 skip。
 """
 
 import json
@@ -63,7 +62,7 @@ def test_external_plugin_registers_tools():
     assert "ext_rules_load" in names
 
 
-@pytest.mark.skipif(not HAVE_DIFF, reason="未编译 qxt_diff")
+@pytest.mark.skipif(not HAVE_DIFF, reason="diff 引擎不可用")
 def test_ext_diff_detects_change(tmp_path):
     k = _kernel()
     out = k.require("tool_registry").dispatch("ext_diff", json.dumps(
@@ -71,7 +70,7 @@ def test_ext_diff_detects_change(tmp_path):
     assert "CHANGED" in out and "line2" in out
 
 
-@pytest.mark.skipif(not HAVE_DIFF, reason="未编译 qxt_diff")
+@pytest.mark.skipif(not HAVE_DIFF, reason="diff 引擎不可用")
 def test_ipc_client_close_reclaims_read_thread(tmp_path):
     """IpcClient.close() 必须终止子进程并回收 _read_loop 线程 (防跨测试泄漏)。"""
     client = IpcClient("diff")
@@ -84,7 +83,7 @@ def test_ipc_client_close_reclaims_read_thread(tmp_path):
     assert client.proc is None
 
 
-@pytest.mark.skipif(not HAVE_DIFF, reason="未编译 qxt_diff")
+@pytest.mark.skipif(not HAVE_DIFF, reason="diff 引擎不可用")
 def test_ext_patch_applies(tmp_path):
     k = _kernel()
     registry = k.require("tool_registry")
@@ -96,7 +95,7 @@ def test_ext_patch_applies(tmp_path):
     assert "X" in patched
 
 
-@pytest.mark.skipif(not HAVE_DIFF, reason="未编译 qxt_diff")
+@pytest.mark.skipif(not HAVE_DIFF, reason="diff 引擎不可用")
 def test_ext_merge3(tmp_path):
     k = _kernel()
     out = k.require("tool_registry").dispatch("ext_merge3", json.dumps(
@@ -104,7 +103,7 @@ def test_ext_merge3(tmp_path):
     assert "shared" in out
 
 
-@pytest.mark.skipif(not HAVE_CRYPTO, reason="未编译 qxt_crypto")
+@pytest.mark.skipif(not HAVE_CRYPTO, reason="crypto 引擎不可用")
 def test_ext_crypto_roundtrip(tmp_path):
     k = _kernel()
     registry = k.require("tool_registry")
@@ -117,7 +116,7 @@ def test_ext_crypto_roundtrip(tmp_path):
     assert opened.get("plaintext") == "青小团秘密"
 
 
-@pytest.mark.skipif(not HAVE_CRYPTO, reason="未编译 qxt_crypto")
+@pytest.mark.skipif(not HAVE_CRYPTO, reason="crypto 引擎不可用")
 def test_ext_crypto_wrong_password_fails(tmp_path):
     k = _kernel()
     registry = k.require("tool_registry")
@@ -129,7 +128,7 @@ def test_ext_crypto_wrong_password_fails(tmp_path):
     assert "tag mismatch" in bad or "错误" in bad or "missing" in bad
 
 
-@pytest.mark.skipif(not HAVE_ANSI, reason="未编译 qxt_ansi")
+@pytest.mark.skipif(not HAVE_ANSI, reason="ansi 引擎不可用")
 def test_ext_ansi_strip(tmp_path):
     k = _kernel()
     out = k.require("tool_registry").dispatch("ext_ansi_strip", json.dumps(
@@ -137,7 +136,7 @@ def test_ext_ansi_strip(tmp_path):
     assert "\x1b" not in out and "红色" in out
 
 
-@pytest.mark.skipif(not HAVE_INDEX, reason="未编译 qxt_index")
+@pytest.mark.skipif(not HAVE_INDEX, reason="index 引擎不可用")
 def test_ext_index_build_and_query(tmp_path):
     (tmp_path / "mod.py").write_text("def hello():\n    return 1\nclass Foo:\n    pass\n", encoding="utf-8")
     k = _kernel()
@@ -149,7 +148,7 @@ def test_ext_index_build_and_query(tmp_path):
     assert "hello" in q
 
 
-@pytest.mark.skipif(not HAVE_RULES, reason="未安装 node / 无 TS 模块")
+@pytest.mark.skipif(not HAVE_RULES, reason="rules 引擎不可用")
 def test_ext_rules_load_and_check(tmp_path):
     k = _kernel()
     registry = k.require("tool_registry")
@@ -171,7 +170,7 @@ def test_ext_rules_load_and_check(tmp_path):
     assert v2.get("passed") is True
 
 
-@pytest.mark.skipif(not HAVE_RULES, reason="未安装 node / 无 TS 模块")
+@pytest.mark.skipif(not HAVE_RULES, reason="rules 引擎不可用")
 def test_ext_skill_search(tmp_path):
     k = _kernel()
     out = k.require("tool_registry").dispatch("ext_skill_search", json.dumps(

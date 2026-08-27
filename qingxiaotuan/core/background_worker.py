@@ -9,6 +9,7 @@ from __future__ import annotations
 import os
 import sys
 import time
+import traceback
 from pathlib import Path
 
 from .background_store import BackgroundStore, kill_process_tree
@@ -80,6 +81,7 @@ def run(job_id: str, home: Path) -> int:
         return 0
     except Exception as exc:  # noqa: BLE001
         error = f"{type(exc).__name__}: {exc}"
+        traceback.print_exc()
         store.update(job_id, status="failed", error=error, heartbeat=time.time())
         session.append("job.error", {"job_id": job_id, "error": error})
         return 1

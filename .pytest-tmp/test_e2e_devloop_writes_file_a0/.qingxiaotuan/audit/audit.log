@@ -1,0 +1,18 @@
+{"seq": 1, "ts": 1787828545.922758, "iso": "2026-08-27T11:02:25.922758+00:00", "type": "audit.ready", "payload": {"type": "audit.ready", "enabled": true, "persist": true}}
+{"seq": 2, "ts": 1787828545.922758, "iso": "2026-08-27T11:02:25.922758+00:00", "type": "plugin.activated", "payload": {"type": "plugin.activated", "name": "audit"}}
+{"seq": 3, "ts": 1787828545.922758, "iso": "2026-08-27T11:02:25.922758+00:00", "type": "service.provided", "payload": {"type": "service.provided", "service": "self_improve", "owner": "self.improve"}}
+{"seq": 4, "ts": 1787828545.922758, "iso": "2026-08-27T11:02:25.922758+00:00", "type": "service.provided", "payload": {"type": "service.provided", "service": "self_improve_rules", "owner": "self.improve"}}
+{"seq": 5, "ts": 1787828545.9378798, "iso": "2026-08-27T11:02:25.937880+00:00", "type": "plugin.activated", "payload": {"type": "plugin.activated", "name": "self.improve"}}
+{"seq": 6, "ts": 1787828545.9378798, "iso": "2026-08-27T11:02:25.937880+00:00", "type": "service.provided", "payload": {"type": "service.provided", "service": "mcp_clients", "owner": "mcp"}}
+{"seq": 7, "ts": 1787828545.9378798, "iso": "2026-08-27T11:02:25.937880+00:00", "type": "plugin.activated", "payload": {"type": "plugin.activated", "name": "mcp"}}
+{"seq": 8, "ts": 1787828545.9378798, "iso": "2026-08-27T11:02:25.937880+00:00", "type": "plugin.activated", "payload": {"type": "plugin.activated", "name": "tools.subagent"}}
+{"seq": 9, "ts": 1787828545.9378798, "iso": "2026-08-27T11:02:25.937880+00:00", "type": "plugin.activated", "payload": {"type": "plugin.activated", "name": "tools.messaging"}}
+{"seq": 10, "ts": 1787828545.9378798, "iso": "2026-08-27T11:02:25.937880+00:00", "type": "plugin.activated", "payload": {"type": "plugin.activated", "name": "tools.workflow"}}
+{"seq": 11, "ts": 1787828545.9378798, "iso": "2026-08-27T11:02:25.937880+00:00", "type": "plugin.activated", "payload": {"type": "plugin.activated", "name": "tools.artifact"}}
+{"seq": 12, "ts": 1787828545.9378798, "iso": "2026-08-27T11:02:25.937880+00:00", "type": "plugin.activated", "payload": {"type": "plugin.activated", "name": "tools.memory"}}
+{"seq": 13, "ts": 1787828545.9378798, "iso": "2026-08-27T11:02:25.937880+00:00", "type": "plugin.activated", "payload": {"type": "plugin.activated", "name": "tools.skills"}}
+{"seq": 14, "ts": 1787828545.9990695, "iso": "2026-08-27T11:02:25.999069+00:00", "type": "service.provided", "payload": {"type": "service.provided", "service": "model_adapter", "owner": "test"}}
+{"seq": 15, "ts": 1787828546.0292172, "iso": "2026-08-27T11:02:26.029217+00:00", "type": "tool.executed", "payload": {"type": "tool.executed", "name": "read_file", "status": "ok", "elapsed": 0.015, "cached": false}}
+{"seq": 16, "ts": 1787828546.0292172, "iso": "2026-08-27T11:02:26.029217+00:00", "type": "tool.executed", "payload": {"type": "tool.executed", "name": "edit_file", "status": "ok", "elapsed": 0.0, "cached": false}}
+{"seq": 17, "ts": 1787828549.8000371, "iso": "2026-08-27T11:02:29.800037+00:00", "type": "tool.executed", "payload": {"type": "tool.executed", "name": "run_tests", "status": "ok", "elapsed": 3.75, "cached": false}}
+{"seq": 18, "ts": 1787828549.8153877, "iso": "2026-08-27T11:02:29.815388+00:00", "type": "loop.iteration", "payload": {"type": "loop.iteration", "n": 1, "report": "已修复 add 并跑通测试\n【已完成】mathlib.add 现返回正确和, 测试通过。"}}

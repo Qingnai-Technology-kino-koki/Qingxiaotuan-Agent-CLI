@@ -1,7 +1,7 @@
 """safety 引擎 + self-improve 闭环 集成测试。
 
 覆盖:
-- C 引擎 safety: score / analyze 风险判定 (最小影响半径)
+- safety 引擎: score / analyze 风险判定 (最小影响半径)
 - self-improve: reflector 抽取经验 / rulegen 生成规则 / skillgen 技能草稿 / 内核插件接入
 """
 import json
@@ -21,7 +21,7 @@ AVAIL = set(ExternalEngineManager().list_engines())
 
 
 # ----------------------------------------------------------------- safety 引擎
-@pytest.mark.skipif("safety" not in AVAIL, reason="safety 引擎未编译/不可用")
+@pytest.mark.skipif("safety" not in AVAIL, reason="safety 引擎不可用")
 def test_safety_score_critical_block():
     m = ExternalEngineManager()
     r = m.call("safety", "score", {"command": "git push --force origin main"})
@@ -31,7 +31,7 @@ def test_safety_score_critical_block():
     m.close_all()
 
 
-@pytest.mark.skipif("safety" not in AVAIL, reason="safety 引擎未编译/不可用")
+@pytest.mark.skipif("safety" not in AVAIL, reason="safety 引擎不可用")
 def test_safety_score_safe_none():
     m = ExternalEngineManager()
     r = m.call("safety", "score", {"command": "ls -la src/"})
@@ -40,7 +40,7 @@ def test_safety_score_safe_none():
     m.close_all()
 
 
-@pytest.mark.skipif("safety" not in AVAIL, reason="safety 引擎未编译/不可用")
+@pytest.mark.skipif("safety" not in AVAIL, reason="safety 引擎不可用")
 def test_safety_analyze_overall_advice():
     m = ExternalEngineManager({})
     ops = [
@@ -55,7 +55,7 @@ def test_safety_analyze_overall_advice():
     m.close_all()
 
 
-@pytest.mark.skipif("safety" not in AVAIL, reason="safety 引擎未编译/不可用")
+@pytest.mark.skipif("safety" not in AVAIL, reason="safety 引擎不可用")
 def test_safety_process_stable_across_calls():
     """回归: 曾因 double-free 导致第二个请求时进程退出, 现应稳定长驻。"""
     m = ExternalEngineManager()
@@ -122,7 +122,7 @@ def test_skillgen_draft_created(tmp_path):
     assert "ext_search" in content
 
 
-def test_self_improve_plugin_service():
+def test_self_improve_plugin_service(qxt_home):
     k = _kernel_with_events()
     svc = k.get("self_improve")
     assert svc is not None

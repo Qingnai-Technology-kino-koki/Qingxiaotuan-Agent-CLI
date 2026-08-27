@@ -12,8 +12,8 @@ def test_ascii_renders_per_state():
         art = m.ascii(0)
         assert isinstance(art, str)
         assert len(art.splitlines()) >= 3
-        # ANSI 着色存在 (24bit 转义)
-        assert "\033[" in art
+        # 无高亮: 纯文本, 不含 ANSI 转义
+        assert "\033[" not in art
 
 
 def test_set_invalid_state_ignored():

@@ -23,6 +23,8 @@ from __future__ import annotations
 from dataclasses import dataclass, field
 from typing import Dict, List, Optional
 
+from .model_lists import MODEL_LISTS
+
 
 @dataclass
 class ProviderPreset:
@@ -689,6 +691,14 @@ ALL_PROVIDERS: List[ProviderPreset] = _dedup_presets(
     _D_CLOUD_PLATFORMS + _E_FREE_TIER + _F_SELF_HOSTED + _G_EXTRA
 )
 
+# 用调研整理的最新模型清单覆盖各供应商的可选模型列表 (聚合平台 50+, 直连平台仅当前支持),
+# 并把默认模型同步为清单第一项 (推荐默认)。清单项带 |free/|paid 标注, 默认模型取 ID 部分。
+for _p in ALL_PROVIDERS:
+    _models = MODEL_LISTS.get(_p.name)
+    if _models:
+        _p.recommended_models = list(_models)
+        _p.model = _models[0].split("|")[0]
+
 # 名称集合, 用于快速查找
 ALL_PROVIDER_NAMES: List[str] = [p.name for p in ALL_PROVIDERS]
 
@@ -707,11 +717,36 @@ def get_provider(name: str) -> Optional[ProviderPreset]:
     return None
 
 
+def get_provider_models(name: str) -> List[str]:
+    """获取某供应商当前可选模型清单 (未收录则返回空列表)。"""
+    preset = get_provider(name)
+    if preset is None:
+        return []
+    return list(preset.recommended_models)
+
+
 def search_providers(query: str) -> List[ProviderPreset]:
     """按关键词搜索供应商 (支持中英文模糊匹配)。"""
     q = query.lower()
     return [p for p in ALL_PROVIDERS
             if q in p.name.lower() or q in p.desc.lower() or q in p.category.lower()]
+
+
+def search_models(query: str) -> List[tuple]:
+    """按关键词跨供应商搜索模型, 返回 [(provider, model_id, free)]。
+
+    匹配范围: 模型 ID / 供应商名 / 供应商描述。模型清单项带 |free/|paid 标注,
+    free 表示该模型有免费额度。
+    """
+    q = query.lower()
+    results: List[tuple] = []
+    for p in ALL_PROVIDERS:
+        for m in p.recommended_models:
+            label = m.split("|")[0]
+            free = "|free" in m
+            if q in label.lower() or q in p.name.lower() or q in p.desc.lower():
+                results.append((p.name, label, free))
+    return results
 
 
 def get_free_providers() -> List[ProviderPreset]:

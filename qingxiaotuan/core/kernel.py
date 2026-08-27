@@ -10,9 +10,13 @@
 
 from __future__ import annotations
 
+import threading
 import time
 from dataclasses import dataclass
-from typing import Any, Callable, Dict, List, Optional
+from typing import Any, Callable, Dict, List, Optional, Union
+
+# 事件历史上限: 只保留最近 N 条, 防止长生命周期内核内存无限增长。
+_MAX_EVENTS = 2000
 
 
 class PluginError(Exception):
@@ -68,13 +72,15 @@ class KernelEvent:
 class Kernel:
     """青小团微内核。相当于 Cordis 的极简实现。"""
 
-    def __init__(self) -> None:
+    def __init__(self, on_event_overflow: Optional[Callable[[List[KernelEvent]], None]] = None) -> None:
         self._plugins: Dict[str, Plugin] = {}
         self._services: Dict[str, Any] = {}
         self._service_owner: Dict[str, str] = {}
         self._hooks: Dict[str, List[Callable[[Dict[str, Any]], None]]] = {}
         self._events: List[KernelEvent] = []
+        self._lock = threading.RLock()
         self._seq = 0
+        self._on_event_overflow = on_event_overflow
 
     # ------------------------------------------------------------------ 插件
 
@@ -151,28 +157,71 @@ class Kernel:
 
     # ------------------------------------------------------------------ 事件
 
-    def on(self, event_type: str, handler: Callable[[Dict[str, Any]], None]) -> None:
-        self._hooks.setdefault(event_type, []).append(handler)
+    def on(self, event_type: Union[str, Any], handler: Callable[[Dict[str, Any]], None]) -> None:
+        """订阅内核事件。
 
-    def emit(self, event_type: str, payload: Optional[Dict[str, Any]] = None) -> None:
-        self._seq += 1
-        event = KernelEvent(seq=self._seq, ts=time.time(), type=event_type, payload=payload or {})
-        self._events.append(event)
+        event_type: EventType 枚举值 (推荐) 或字符串 (向后兼容); "*" 为通配。
+        """
+        from .events import EventType as _ET
+        key = event_type.value if isinstance(event_type, _ET) else str(event_type)
+        with self._lock:
+            self._hooks.setdefault(key, []).append(handler)
+
+    def emit(self, event_type: Union[str, Any], payload: Optional[Dict[str, Any]] = None) -> None:
+        """发射内核事件。
+
+        event_type: EventType 枚举值 (推荐) 或字符串 (向后兼容)。
+        payload: 事件负载, 建议使用 events.py 中定义的 TypedDict。
+        """
+        from .events import EventType as _ET
+        key = event_type.value if isinstance(event_type, _ET) else str(event_type)
+        with self._lock:
+            self._seq += 1
+            event = KernelEvent(seq=self._seq, ts=time.time(), type=key,
+                                payload=payload or {})
+            self._events.append(event)
+            overflow_handlers: list = []
+            if len(self._events) > _MAX_EVENTS:
+                overflow = len(self._events) - _MAX_EVENTS
+                evicted = list(self._events[:overflow])
+                del self._events[:overflow]
+                # 通知溢出回调 (审计/观测方可以记录被丢弃的事件)
+                if self._on_event_overflow is not None:
+                    try:
+                        self._on_event_overflow(evicted)
+                    except Exception:  # noqa: BLE001
+                        pass
+                # 收集溢出事件的 handlers (在锁内快照, 锁外派发, 避免递归 emit)
+                overflow_handlers = list(self._hooks.get("event.overflow", []))
+                overflow_handlers += list(self._hooks.get("*", []))
+                overflow_payload = {"evicted": len(evicted), "remaining": len(self._events)}
+            else:
+                overflow_payload = None
+            # 复制 handler 列表再派发, 避免派发期间注册/卸载导致迭代器失效。
+            handlers = list(self._hooks.get(key, []))
+            wildcard = list(self._hooks.get("*", []))
         # 异常隔离: 单个 handler (尤其是 UI 渲染/观测回调) 抛异常不应中断主循环。
         # 逐个捕获、记录, 继续派发给其余 handler。
-        for handler in self._hooks.get(event_type, []):
+        for handler in handlers:
             try:
                 handler(event.payload)
             except Exception as exc:  # noqa: BLE001
-                self._emit_error(event_type, exc)
+                self._emit_error(key, exc)
         # 通配符 "*" handler 同样隔离
-        if "*" in self._hooks:
-            wide_payload = {"type": event_type, **event.payload}
-            for handler in self._hooks["*"]:
+        if wildcard:
+            wide_payload = {"type": key, **event.payload}
+            for handler in wildcard:
                 try:
                     handler(wide_payload)
                 except Exception as exc:  # noqa: BLE001
                     self._emit_error("*", exc)
+        # 溢出事件派发 (锁外, 避免递归 emit 导致级联截断)
+        if overflow_handlers and overflow_payload is not None:
+            for handler in overflow_handlers:
+                try:
+                    handler(overflow_payload)
+                except Exception as exc:  # noqa: BLE001
+                    self._emit_error("event.overflow", exc)
 
     @staticmethod
     def _emit_error(event_type: str, exc: Exception) -> None:

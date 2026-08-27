@@ -5,6 +5,8 @@ from __future__ import annotations
 import json
 from pathlib import Path
 
+import pytest
+
 from qingxiaotuan.audit.store import (
     AuditStore, AuditQuery, redact, _redact_text,
 )
@@ -111,3 +113,80 @@ def test_audit_plugin_subscribes_and_logs(tmp_path):
     assert ev.payload.get("token") == "***"
     # 跳过类型不被记录
     assert not any(e.type == "turn.step" for e in plugin.store.recent(50))
+
+
+# ---------------------------------------------------------------- 去重 / limit / stats
+
+def test_query_dedupes_buffer_and_disk(tmp_path):
+    """回归: 缓冲与落盘合并时同一 seq 只计一次, 不翻倍。"""
+    store = AuditStore(home=tmp_path, enabled=True, persist=True)
+    for i in range(3):
+        store.log("tool.executed", {"n": i})
+    # 同一实例: 缓冲 3 条 + 磁盘 3 条, 必须恰好 3 条
+    assert len(store.query()) == 3
+    store.close()
+    # 新实例 (空缓冲) 从磁盘读也恰好各一次
+    fresh = AuditStore(home=tmp_path, enabled=True, persist=True)
+    again = fresh.query()
+    assert len(again) == 3
+    assert [e.seq for e in again] == sorted(e.seq for e in again)
+    assert len({e.seq for e in again}) == 3
+
+
+def test_query_limit_returns_earliest(tmp_path):
+    store = AuditStore(home=tmp_path, enabled=True, persist=True)
+    for i in range(3):
+        store.log("tool.executed", {"n": i})
+    hits = store.query(AuditQuery(limit=2))
+    assert len(hits) == 2
+    # limit 取最早的前 N 条
+    assert [e.payload["n"] for e in hits] == [0, 1]
+
+
+def test_stats_counts_disk_after_clear_buffer(tmp_path):
+    """stats 必须算上落盘记录: 清掉内存缓冲后 total 不应归零。"""
+    store = AuditStore(home=tmp_path, enabled=True, persist=True)
+    store.log("model.request", {"model": "a"})
+    store.log("tool.executed", {"name": "b"})
+    store.clear_buffer()
+    st = store.stats()
+    assert st["buffered"] == 0
+    assert st["total"] == 2
+    assert st["by_type"] == {"model.request": 1, "tool.executed": 1}
+    assert st["oldest_iso"] and st["newest_iso"]
+    assert st["oldest_iso"] <= st["newest_iso"]
+
+
+# ---------------------------------------------------------------- 导出
+
+def test_export_three_formats_redacted(tmp_path):
+    store = AuditStore(home=tmp_path, enabled=True, persist=True)
+    store.log("tool.executed", {"name": "run_shell", "api_key": "sk-export-secret"})
+    q = AuditQuery()
+    jl = tmp_path / "out.jsonl"
+    js = tmp_path / "out.json"
+    cs = tmp_path / "out.csv"
+    r1 = store.export(jl, fmt="jsonl", query=q)
+    r2 = store.export(js, fmt="json", query=q)
+    r3 = store.export(cs, fmt="csv", query=q)
+    assert (r1["count"], r1["fmt"]) == (1, "jsonl")
+    assert (r2["count"], r2["fmt"]) == (1, "json")
+    assert (r3["count"], r3["fmt"]) == (1, "csv")
+
+    lines = jl.read_text(encoding="utf-8").strip().splitlines()
+    assert len(lines) == r1["count"]
+    arr = json.loads(js.read_text(encoding="utf-8"))
+    assert isinstance(arr, list) and len(arr) == 1
+    assert arr[0]["payload"]["api_key"] == "***"
+    header = cs.read_text(encoding="utf-8").splitlines()[0]
+    assert header == "seq,ts,iso,type,payload_json"
+    # 三种格式全程无明文密钥
+    for f in (jl, js, cs):
+        content = f.read_text(encoding="utf-8")
+        assert "sk-export-secret" not in content
+
+
+def test_export_unknown_fmt_raises(tmp_path):
+    store = AuditStore(home=tmp_path, enabled=True, persist=True)
+    with pytest.raises(ValueError):
+        store.export(tmp_path / "out.xml", fmt="xml")

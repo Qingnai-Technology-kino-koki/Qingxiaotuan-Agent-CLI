@@ -1,4 +1,4 @@
-"""纯 Python 实现 rules 引擎 (替代 ext/ts/src/rules/main.ts)
+"""纯 Python 实现 rules 引擎
 
 加载 YAML 规则, 对"代码补丁/对话/文件"做策略校验。每条规则有:
   - id / severity (error|warn|info)
@@ -23,6 +23,7 @@ import math
 import re
 import sys
 from collections import Counter
+from typing import Any
 
 try:
     import yaml
@@ -223,7 +224,7 @@ def _eval(node, scope: dict):
             return str(args[0]).strip() != ""
         raise ValueError(f"unknown fn {fn}")
     if "var" in node:
-        v = scope
+        v: Any = scope
         for part in str(node["var"]).split("."):
             if v is None:
                 return None
@@ -362,9 +363,9 @@ class RuleEngine:
             elif method == "lint":
                 report, errors, warns, infos = [], 0, 0, 0
                 for f in params.get("files", []) or []:
-                    v = self.check(str(f.get("path", "")), str(f.get("content", "")), "file")
-                    report.append({"path": f.get("path", ""), "violations": v})
-                    for x in v:
+                    violations = self.check(str(f.get("path", "")), str(f.get("content", "")), "file")
+                    report.append({"path": f.get("path", ""), "violations": violations})
+                    for x in violations:
                         if x["severity"] == "error":
                             errors += 1
                         elif x["severity"] == "warn":

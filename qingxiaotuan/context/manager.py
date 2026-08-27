@@ -17,14 +17,6 @@ from __future__ import annotations
 import re
 from typing import Any, Callable, Dict, List, Optional
 
-_SUMMARY_PROMPT = (
-    "你是一个上下文压缩器。下面是一段较早的对话历史 (用户指令、你的思考、工具调用与结果)。"
-    "请压缩成一份**结构化中文摘要**, 必须保住: 用户的长期目标与约束、已做出的关键决策、"
-    "已修改/创建的文件及其目的、失败的尝试与原因、待办项、以及任何用户明确表达的偏好。"
-    "丢弃琐碎的步骤细节与重复内容。用要点列出, 不超过 400 字。只输出摘要本身。"
-)
-
-
 def estimate_tokens(text: str) -> int:
     """粗略估算 token 数: 英文约 4 字符/token, 中文约 1.6 字符/token, 取折中 ~3.2。"""
     if not text:
@@ -55,14 +47,14 @@ class ContextManager:
         budget_tokens: int = 60000,
         strategy: str = "smart",
         compact_trigger: Optional[int] = None,  # 超过该 token 预算才触发 (None=用 budget)
-        summarize: Optional[Callable[[str], str]] = None,
+        summarize: Optional[Callable[[List[Dict[str, Any]]], str]] = None,
     ) -> None:
         self.keep_recent = keep_recent
         self.budget_tokens = budget_tokens
         # 触发阈值: 默认等于预算, 可配置为略低于预算以提前压缩, 避免临界点抖动
         self.compact_trigger = compact_trigger or budget_tokens
         self.strategy = strategy
-        self._summarize = summarize  # (text) -> summary_text
+        self._summarize = summarize  # (消息列表) -> summary_text
 
     def compact_if_needed(self, messages: List[Dict[str, Any]]) -> tuple[List[Dict[str, Any]], int]:
         """返回 (压缩后的消息列表, 被折叠的消息条数)。无需压缩则返回原样 (dropped=0)。
@@ -81,6 +73,10 @@ class ContextManager:
                 break
             current = compacted
         return current, total_dropped
+
+    def needs_compact(self, messages: List[Dict[str, Any]]) -> bool:
+        """预判是否即将触发自动压缩 (供 PreCompact hook 与调用方提前感知)。"""
+        return estimate_messages(messages) > self.compact_trigger
 
     def compact_force(self, messages: List[Dict[str, Any]]) -> tuple[List[Dict[str, Any]], int]:
         """强制压缩 (对标 Claude Code /compact): 忽略预算阈值, 折叠中间历史直到无法再压缩。"""
@@ -114,9 +110,10 @@ class ContextManager:
         dropped = len(middle)
 
         if self.strategy == "smart" and self._summarize and middle:
-            middle_text = self._serialize(middle)
+            # 直接传原始消息列表, 由 summarize 回调自行序列化,
+            # 避免传入字符串导致迭代器按字符遍历的 bug。
             try:
-                summary = self._summarize(middle_text)
+                summary = self._summarize(middle)
             except Exception:
                 summary = ""
             if summary:

@@ -15,7 +15,7 @@ import os
 from typing import Any, Dict, List, Tuple
 
 # (点路径, 期望类型, 可选范围/校验)
-_RULES: List[Tuple[str, type, Any]] = [
+_RULES: List[Tuple[str, Any, Any]] = [
     ("model.temperature", float, (0.0, 2.0)),
     ("model.max_tokens", int, (1, 1_000_000)),
     ("model.timeout", (int, float), (1, 600)),

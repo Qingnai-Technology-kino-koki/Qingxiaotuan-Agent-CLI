@@ -6,6 +6,7 @@
 - Swarm.run 三阶段流程串联 (用注入的 planner/acceptor 函数, 不依赖真实模型);
 - worker_overrides 从 model.worker 派生 (只配 provider 也能继承主 model 字段);
 - depends_on 会被注入到子任务 prompt (黑板通信);
+- depends_on 按拓扑分波 dispatch: 波内并发、波间等待, 未知依赖不死锁, 循环依赖兜底;
 - SubAgentPool 透传 model_overrides 到沙箱 req (检查 sandbox.run_in_sandbox 收到的参数)。
 """
 
@@ -112,10 +113,13 @@ class _FakePool(SubAgentPool):
     def __init__(self, *a, **kw):
         super().__init__(*a, **kw)
         self.last_overrides = []
+        self.dispatch_batches = []  # 分波执行时每波的任务批次
 
     def dispatch(self, tasks, **kw):
-        # 记录 Swarm 透传进来的弱模型覆盖层 (pool 级)
-        self.last_overrides = [dict(self.model_overrides or {}) for _ in tasks]
+        # 记录 Swarm 透传进来的弱模型覆盖层 (pool 级);
+        # 分波执行时 dispatch 会被多次调用 (每波一次), 累加记录
+        self.last_overrides += [dict(self.model_overrides or {}) for _ in tasks]
+        self.dispatch_batches.append(list(tasks))
         from qingxiaotuan.core.subagents import SubResult
         return [
             SubResult(
@@ -193,6 +197,68 @@ def test_planner_overrides_empty_returns_no_switch():
     assert swarm.planner_overrides() == {}
 
 
+# ---------------------------------------------------------------- 依赖分波 (depends_on)
+
+def test_build_waves_topological_order():
+    """depends_on 决定波次: 波内互相独立可并发, 后波依赖前波结果。"""
+    plan = SwarmPlan(goal="g", tasks=[
+        {"id": "T1", "title": "", "prompt": "p1", "depends_on": ""},
+        {"id": "T2", "title": "", "prompt": "p2", "depends_on": ""},
+        {"id": "T3", "title": "", "prompt": "p3", "depends_on": "T1,T2"},
+        {"id": "T4", "title": "", "prompt": "p4", "depends_on": "T3"},
+    ])
+    waves = Swarm._build_waves(plan)
+    assert [[t["id"] for t in w] for w in waves] == [["T1", "T2"], ["T3"], ["T4"]]
+
+
+def test_build_waves_unknown_dep_and_cycle_fallback():
+    """未知依赖 id 视为已满足 (planner 幻觉不应死锁); 自引用忽略;
+    循环依赖兜底进最后一波, 任务不丢失。"""
+    plan = SwarmPlan(goal="g", tasks=[
+        {"id": "T1", "title": "", "prompt": "p", "depends_on": "T9, TX"},  # 全是不存在的 id
+        {"id": "T2", "title": "", "prompt": "p", "depends_on": "T2"},      # 自引用
+    ])
+    waves = Swarm._build_waves(plan)
+    assert [[t["id"] for t in w] for w in waves] == [["T1", "T2"]]
+
+    plan2 = SwarmPlan(goal="g", tasks=[
+        {"id": "TA", "title": "", "prompt": "p", "depends_on": "TB"},
+        {"id": "TB", "title": "", "prompt": "p", "depends_on": "TA"},
+        {"id": "TC", "title": "", "prompt": "p", "depends_on": ""},
+    ])
+    waves2 = Swarm._build_waves(plan2)
+    assert [[t["id"] for t in w] for w in waves2] == [["TC"], ["TA", "TB"]]
+
+
+def test_run_dispatches_in_waves_and_feeds_blackboard():
+    """分波端到端: 无依赖任务先行并发, T3 等 T1/T2 结果上黑板后再派且 prompt 注入前波产物;
+    报告结果顺序仍按 plan 原序。"""
+    def planner(goal):
+        return SwarmPlan(goal=goal, tasks=[
+            {"id": "T1", "title": "研究 A", "prompt": "研究 A 的细节", "depends_on": ""},
+            {"id": "T2", "title": "研究 B", "prompt": "研究 B 的细节", "depends_on": ""},
+            {"id": "T3", "title": "汇总", "prompt": "汇总结论", "depends_on": "T1,T2"},
+        ])
+
+    cfg = _cfg(provider="deepseek", base_url="https://api.deepseek.com", model="deepseek-chat")
+    pool = _FakePool(kernel=None, config=cfg, workspace=".",
+                     model_overrides={"provider": "opencode-zen"},
+                     isolation="thread", max_workers=2)
+    swarm = Swarm(kernel=None, config=cfg, workspace=".",
+                  planner_fn=planner, acceptor_fn=_fake_acceptor,
+                  isolation="thread", max_workers=2, pool=pool)
+    collab = swarm.run("分波协作")
+
+    wave_ids = [[t.task_id for t in batch] for batch in pool.dispatch_batches]
+    assert wave_ids == [["T1", "T2"], ["T3"]]
+    # 第二波的 T3 prompt 已注入 T1/T2 的黑板产出
+    t3 = [t for t in pool.dispatch_batches[-1] if t.task_id == "T3"][0]
+    assert "研究 A 的细节" in t3.prompt and "研究 B 的细节" in t3.prompt
+    # 分波不改变报告顺序: 按 plan 原序重排
+    assert [r.task_id for r in collab.worker_results] == ["T1", "T2", "T3"]
+    assert "worker 产出" in collab.blackboard_log
+
+
 # ---------------------------------------------------------------- SubAgentPool 透传
 
 def test_subagentpool_propagates_model_overrides():
@@ -217,3 +283,72 @@ def test_subagentpool_propagates_model_overrides():
 def test_prompts_non_empty():
     assert _planner_prompt("目标X").strip()
     assert _acceptor_prompt("goal", "[plan]", "[res]", "[board]").strip()
+
+
+# ---------------------------------------------------------------- /swarm 斜杠命令接线
+
+def test_slash_swarm_wires_collaboration(monkeypatch):
+    """/swarm <目标> 应构造 Swarm 跑协作, 展示报告并把结论回灌主 Agent。"""
+    import qingxiaotuan.core.swarm as swarm_mod
+
+    class _FakeCollab:
+        def to_report(self):
+            return "# 多 Agent 协作报告\n- 规划子任务: 2 项\n- 验收结论: 完成"
+
+        accepted = "验收结论: 完成"
+
+    class _FakeSwarm:
+        def __init__(self, **kw):
+            self.kw = kw
+
+        def run(self, goal):
+            self.goal = goal
+            return _FakeCollab()
+
+    monkeypatch.setattr(swarm_mod, "Swarm", _FakeSwarm)
+
+    class _Ctx:
+        confirm = lambda _p: True
+
+    class _Agent:
+        kernel = None
+        ctx = _Ctx()
+        messages = []
+
+    agent = _Agent()
+    cfg = Config(profile="default")
+    from qingxiaotuan.cli import commands as cmds
+    ok = cmds._handle_slash("/swarm 写一份开源公告", agent, cfg, ".")
+    assert ok is True
+    # 目标被传给 Swarm.run
+    assert agent.messages and "多 Agent 协作已完成" in agent.messages[-1]["content"]
+    assert "验收结论" in agent.messages[-1]["content"]
+
+
+def test_slash_swarm_no_arg_shows_usage(monkeypatch):
+    """无参数时给出用法提示, 不触发协作。"""
+    import qingxiaotuan.core.swarm as swarm_mod
+    called = []
+
+    class _FakeSwarm:
+        def __init__(self, **kw):
+            called.append(True)
+
+        def run(self, goal):
+            called.append(goal)
+
+    monkeypatch.setattr(swarm_mod, "Swarm", _FakeSwarm)
+
+    class _Ctx:
+        confirm = lambda _p: True
+
+    class _Agent:
+        kernel = None
+        ctx = _Ctx()
+        messages = []
+
+    cfg = Config(profile="default")
+    from qingxiaotuan.cli import commands as cmds
+    ok = cmds._handle_slash("/swarm", _Agent(), cfg, ".")
+    assert ok is True
+    assert called == []  # 未构造 Swarm

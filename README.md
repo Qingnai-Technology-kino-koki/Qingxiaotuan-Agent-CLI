@@ -1,101 +1,158 @@
-# 青小团 CLI (Qingxiaotuan Agent CLI)
+# Qingxiaotuan CLI (青小团)
 
-> 一个以"最小影响半径"为核心设计理念的 Agent CLI：在 Agent 替你改东西之前，先想清楚这一步会动到哪里、会不会翻车。
->
-> 当前状态：**纯 Python 全栈** — 核心内核 + 外部能力引擎全部使用 Python 实现。
+[![CI](https://github.com/Qingnai-Technology-kino-koki/Qingxiaotuan-Agent-CLI/actions/workflows/ci.yml/badge.svg)](https://github.com/Qingnai-Technology-kino-koki/Qingxiaotuan-Agent-CLI/actions/workflows/ci.yml)
+[![Python](https://img.shields.io/badge/python-3.11%20%7C%203.12%20%7C%203.13-blue)](https://www.python.org)
+[![License: MIT](https://img.shields.io/badge/license-MIT-green)](./LICENSE)
+[![PRs Welcome](https://img.shields.io/badge/PRs-welcome-brightgreen)](./CONTRIBUTING.md)
 
-一个独立的 Agent 命令行工具，融合多项开源 Agent 项目的核心理念二次开发：
+**English** | [简体中文](README_zh-CN.md) | [繁體中文](README_zh-TW.md) | [日本語](README_ja.md) | [한국어](README_ko.md) | [Español](README_es.md) | [Português (BR)](README_pt-BR.md) | [Français](README_fr.md) | [Deutsch](README_de.md) | [Русский](README_ru.md)
 
-| 来源 | 吸收的理念 |
-| --- | --- |
-| **DeepSeek Harness (dsh)** | 微内核（Cordis 风格）、一切皆插件、Profile 组合式配置、模型中立适配、headless 一次性任务、append-only 会话事件流 |
-| **Hermes Agent** | 三层记忆（会话/事实/技能）、技能自进化闭环、SOUL.md 身份、SQLite FTS5 跨会话检索、自注册工具、cron 定时任务 |
-| **Claude Code** | 流畅 CLI（多行输入/命令历史）、实时思考过程与工具状态展示、大上下文机制（整库结构+文件+历史智能管理）、`/clear` `/help` 等交互命令 |
-| **Hermes 自主进化** | Agent 持续自主迭代开发 Loop（分析→规划→实现→自测→核实→汇报），直到用户明确满意才停止 |
+> An agent CLI built around one idea: **know your blast radius before the agent touches anything.**
+> Every shell command is risk-analyzed and rated *before* it runs — critical operations are blocked by default, and a living mascot shows you exactly what state the agent is in.
 
-## 吉祥物：青小团 (Mascot)
+Pure-Python, zero-compile, model-neutral. 119 modules, ~21k lines of source backed by **591 offline tests** (mock-server end-to-end included) on a Python 3.11–3.13 CI matrix.
 
-青小团是一只圆润的青色小团子，呼应项目名 Qingxiaotuan。它不是静态 logo，而是**一个有"生命体征"的状态机**——随任务推进实时变化，让你一眼看清 Agent 现在在干什么：
+<!-- 📹 TODO(demo): drop a 30–60s terminal recording here showing:
+     qxt chat → task → mascot transitions → safety interception moment.
+     Until then, the ASCII state machine below is the real thing. -->
+
+## The Mascot Is the Status Bar
+
+Qingxiaotuan ("little green dumpling") is not a static logo — it is a **state machine with vital signs**, rendered live in your terminal so you always know what the agent is doing:
 
 ```
-  idle    thinking    working     alert      done
-  ( ◡ )   ? ⠋        ( • • )    ( @ • )    ✨
- ╭─────╮ ( ◠ ◠ )    ╭─────╮    ╭─────╮    ( ^ ^ )
- ╰─────╯ ╭─────╮    ╰─────╯    ╰─────╯    ╭─────╮
-         ╰─────╯     ▔▔▔▔▔      ⚠ 拦截     ╰─────╯
-  待命    思考(摇摆)  干活(浮动)  安全拦截    完成(弯月)
+  idle      thinking      working       alert        done
+  ( ◡ )     ? ⠋          ( • • )      ( @ • )      ✨
+ ╭─────╮   ( ◠ ◠ )      ╭─────╮     ╭─────╮      ( ^ ^ )
+ ╰─────╯   ╭─────╮      ╰─────╯     ╰─────╯      ╭─────╮
+           ╰─────╯       ▔▔▔▔▔        ⚠ BLOCKED    ╰─────╯
+  waiting  reasoning    tool call    intercepted   finished
 ```
 
-| 状态 | 触发时机 | 视觉 |
+| State | When | Visual |
 | --- | --- | --- |
-| `idle` 待命 | 空闲 / 等待输入 | 平静呼吸 |
-| `thinking` 思考 | 模型推理中 | 左右摇摆 + 旋转光标 |
-| `working` 干活 | 工具调用执行中 | 身体浮动 + 进度环 |
-| `alert` 警戒 | **安全护栏拦截**危险命令 | 变橙、抖动（最小影响半径生效的直观信号） |
-| `done` 完成 | 任务收尾 | 弯月眼 + 星光 |
+| `idle` | waiting for input | calm breathing |
+| `thinking` | model reasoning | swaying + spinner |
+| `working` | executing a tool call | floating + progress ring |
+| `alert` | **safety guardrail blocked** a dangerous command | turns orange, trembles — blast-radius control you can *see* |
+| `done` | task finished | crescent eyes + sparkle |
 
-## 设计理念 (Design Principles)
+## Why This One
 
-1. **最小影响半径 (Minimum Blast Radius)** — 每次 shell 命令执行前，Python `safety` 引擎会做静态风险分析，`critical` 级命令（`rm -rf /` / `git push --force` / `DROP TABLE`）在 `run_shell` 执行前被**默认拦截**。
-2. **可重放的工作流 (Replayable Workflow)** — 把经验固化为可审计、可重放的规则与技能。
-3. **自我改进闭环 (Self-Improve Loop)** — 每次执行后自动复盘，从成功/失败中抽取经验生成护栏。
-4. **纯 Python 能力内核** — 所有外部引擎（diff/crypto/index/ansi/safety/json/search/notify）均以 Python 实现，统一 JSONL IPC 协议与内核对话。
+- **Minimum Blast Radius by default** — before every shell command runs, the pure-Python `safety` engine does static risk analysis; `critical` commands (`rm -rf /`, `git push --force`, `DROP TABLE`) are **blocked before execution**, not merely logged after.
+- **Reversible workspace moves** — `/diff` to review changes, `/undo` to roll back (`--safe` mode included), sessions replayable via an append-only event stream.
+- **10 capability engines, all pure Python, zero IPC** — diff / crypto / index / ansi / safety / json / search / notify / rules / skill-market, wired through a registry with health checks (`qxt ext selftest`).
+- **Model-neutral** — DeepSeek, Claude, Gemini or local models behind OpenAI-compatible / Anthropic adapters; switch any time with `/model`. `/route` estimates task difficulty and suggests a model (advisory).
+- **Multi-agent swarm** — `/swarm` plans with a strong model, executes subtasks with cheaper models concurrently, then has the strong model accept-or-reject the result.
+- **Self-improve loop** — after each run the reflector diagnoses failures (pytest/npm/git/cargo/dotnet aware) and distills guardrails, so the same mistake is caught earlier next time.
+- **Memory that survives restarts** — three layers (session / facts / skills) with SQLite FTS5 full-text recall across sessions.
+- **UI in 10 languages** — 简体中文 / 繁體中文 / English / 日本語 / 한국어 / Español / Português (Brasil) / Français / Deutsch / Русский. Picked at first run (`qxt setup`), change any time in the config; agent replies follow your choice.
+- **Plain-text terminal output** — every CLI command prints pure text: no colors, no bold, no ANSI escapes (great for piping, logging, and CI). The interactive TUI keeps a single Kimi Code–style accent color (`#4FA8FF` light blue) for titles, badges and prompts; everything else stays unadorned.
+- **Fast cold start** — heavy SDKs (`openai`, `httpx`, `anthropic`) and command modules are lazy-imported, so `qxt --help` / `qxt --version` and the REPL start in well under two seconds.
 
-## 安装
+## Quick Start
 
-> 要求 Python ≥ 3.11，纯 Python 全栈，无需编译 C/TS。
+> Requires Python ≥ 3.11. Pure Python — nothing to compile.
 
 ```bash
+git clone https://github.com/Qingnai-Technology-kino-koki/Qingxiaotuan-Agent-CLI.git
+cd qingxiaotuan
 pip install -e .
-qxt setup                 # 30秒向导: 选供应商 + 填 API Key
-qxt chat                  # 开聊
+
+qxt setup     # 30-second wizard: pick a provider, paste your API key
+qxt chat      # start talking
 ```
 
-**可选增强**：安装 cryptography 获得生产级 AES-256-GCM 加密（未安装时 crypto 引擎自动使用标准库回退）：
+Headless one-shot tasks work too:
 
 ```bash
-pip install cryptography
+qxt run "refactor utils.py into two modules and keep tests green"
 ```
 
-## 架构
+> **Crypto note:** the `crypto` engine is standard-library only (PBKDF2-HMAC-SHA256 key derivation + SHA256-keystream stream cipher + SHA-256 fingerprints). The stream cipher is a lightweight design without authentication tags — fine for tamper-evident local use, not a high-security primitive.
+
+## Slash Commands
+
+`/help` `/tools` `/skills` `/memory` `/usage` `/cost` `/context` `/compact` `/diff` `/undo` `/impact` `/mcp` `/hooks` `/image` `/images` `/clear-images` `/model` `/effort` `/mode` `/plan` `/resume` `/swarm` `/route` `/clear` `/more` `/exit`
+
+Highlights:
+
+| Command | What it does |
+| --- | --- |
+| `/plan` | read-only analysis mode — mutation tools are intercepted |
+| `/swarm` | multi-agent collaboration (strong plan → parallel cheap execution → strong acceptance) |
+| `/route` | difficulty estimate + model suggestion (advisory, no auto-switching) |
+| `/compact` | fold old history to reclaim context budget |
+| `/cost` | token usage, cache hit rate, estimated spend |
+| `/undo` | transactional rollback via Mutation Ledger (`N` / `<file>` / `all` / `--safe`); git fallback |
+| `/impact` | show operation ledger + blast radius (files changed, steps taken) |
+| `/mcp` | list connected MCP servers and their tools (`/mcp <server>` shows that server's tools) |
+| `/hooks` | user-level hooks: list configured scripts (`/hooks`); `/hooks test` triggers one |
+| `/image` | attach an image to the next turn (`/image <path|url|data:URI>`); `/images` lists pending; `/clear-images` clears |
+
+## Capability Engines
+
+| Engine | What it provides |
+| --- | --- |
+| `diff` | line/word-level diff + patch + 3-way merge |
+| `crypto` | PBKDF2-HMAC-SHA256 derivation + SHA256-keystream stream cipher + fingerprints |
+| `index` | FNV-1a incremental symbol index |
+| `ansi` | terminal escape parse / strip / render |
+| `hooks` | user-level pre/post tool hooks — scriptable, fail-safe, argv-only (no shell) |
+| `safety` | minimum-blast-radius guardrail: risk scoring + blast radius + blocking |
+| `ledger` | transactional mutation ledger: pre-exec snapshots + auto-rollback + fine-grained undo (first-mover) |
+| `vision` | multimodal: user/tool image attach → image_url blocks; gated by ModelCapabilities.vision; Anthropic translation |
+| `json` | RFC 6901 pointer / per-path diff / deep merge |
+| `search` | recursive regex search (ignores node_modules/.git) |
+| `notify` | cross-platform desktop notifications |
+| `rules` | YAML policy validation (no-eval safe expressions) |
+| `skill-market` | skill package registry: pull / publish / search |
+
+```bash
+qxt ext engines     # list engines actually available
+qxt ext selftest    # launch each engine, report health
+```
+
+## Architecture
 
 ```
 qingxiaotuan/
-├── cli/          命令行层
-├── core/         内核与编排: kernel / agent / devloop / background
-├── config/       配置: defaults / loader / plugin / validate
-├── ext/          纯 Python 外部引擎: diff/crypto/index/ansi/safety/json/search/notify + registry
-├── models/       模型适配: openai_compat / anthropic / provider_catalog
-├── memory/       记忆: store(FTS5) / sessions(事件流)
-├── skills/       技能: manager / plugin
-├── tools/        工具: base / shell / filesystem / web / external(引擎集成)
-├── context/      上下文: indexer / manager
-├── cron/         定时任务
-├── ui/           TUI (repl + fullscreen)
-└── resources/    内置技能模板 + SOUL.md
+├── cli/          command layer (+ fullscreen TUI)
+├── core/         kernel & orchestration: kernel / agent / devloop / background / swarm
+├── config/       defaults / loader / plugin / validate
+├── ext/          10 pure-Python engines + registry
+├── models/       adapters: openai_compat / anthropic / provider_catalog / router
+├── memory/       store (SQLite FTS5) / sessions (append-only events)
+├── skills/       manager / plugin
+├── tools/        base / shell / filesystem / web / external / code / audit / mcp (stdio MCP bridge)
+├── context/      indexer / manager
+├── cron/         scheduled jobs
+├── ui/           repl + fullscreen TUI (shared theme)
+└── resources/    bundled skill templates + SOUL.md identity
 ```
 
-## 外部能力引擎 (纯 Python)
+## Quality
 
-| 引擎 | 功能 |
-| --- | --- |
-| `diff` | 行/词级 diff + patch + 3-way merge |
-| `crypto` | AES-256-GCM + PBKDF2-HMAC-SHA256 + 指纹 |
-| `index` | FNV-1a 增量符号索引 |
-| `ansi` | 终端转义解析/剥离/渲染 |
-| `safety` | 最小影响半径护栏: 风险评分 + blast radius + 阻断 |
-| `json` | RFC 6901 Pointer / 逐路径 diff / 深合并 |
-| `search` | 递归正则检索 (忽略 node_modules/.git) |
-| `notify` | 跨平台桌面通知 |
+- **591 offline tests** — no network required, including end-to-end runs against a local OpenAI-compatible mock server (agent tool loop, streaming, background worker, real `qxt` subprocess).
+- **CI matrix**: Python 3.11 / 3.12 / 3.13.
+- Only five runtime dependencies: `openai`, `pyyaml`, `rich`, `prompt_toolkit`, `httpx`.
 
-```bash
-qxt ext engines                 # 列出可用引擎
-qxt ext selftest                # 健康检查
-```
+## Roadmap
 
-## 开源
+- [ ] Automatic model routing (wire `router.enabled` into the agent loop; today `/route` is advisory)
+- [ ] Publish to PyPI (`pip install qingxiaotuan`)
+- [ ] Skill market public registry
 
-青小团是 **MIT 许可** 的开源项目。模型中立，可随时切换 DeepSeek / Claude / Gemini / 本地模型。
+## Contributing
 
-- **许可证**：[MIT](./LICENSE)
-- **参与贡献**：见 [CONTRIBUTING.md](./CONTRIBUTING.md)
+Issues and PRs welcome — see [CONTRIBUTING.md](./CONTRIBUTING.md). Translations for this README are coordinated in-file; fix any language via PR.
+
+## License & Credits
+
+MIT — see [LICENSE](./LICENSE).
+
+Standing on the shoulders of open source; ideas absorbed and re-implemented from scratch in Python:
+
+- **DeepSeek Harness (dsh)** — micro-kernel (Cordis-style), everything-is-a-plugin, profile-based config, model-neutral adaptation, headless tasks, append-only session event stream
+- **Hermes Agent** — three-layer memory, skill self-evolution loop, SOUL.md identity, SQLite FTS5 cross-session recall, cron jobs
+- **Claude Code** — fluid CLI interactions, live thinking/tool status display, large-context management, interactive slash commands

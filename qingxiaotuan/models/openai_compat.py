@@ -2,12 +2,12 @@
 
 from __future__ import annotations
 
-import httpx
-from typing import Any, Callable, Dict, List, Optional, Tuple
-
-from openai import OpenAI
+from typing import TYPE_CHECKING, Any, Callable, Dict, List, Optional, Tuple
 
 from .base import ModelAdapter, ModelCapabilities, ModelResponse, ToolCall
+
+if TYPE_CHECKING:
+    from openai import OpenAI
 
 
 class OpenAICompatAdapter(ModelAdapter):
@@ -48,8 +48,11 @@ class OpenAICompatAdapter(ModelAdapter):
                     "未配置 API Key。请运行 `qxt setup`, 或设置环境变量 "
                     "DEEPSEEK_API_KEY / OPENCODE_ZEN_API_KEY / QXT_API_KEY。"
                 )
+            # 延迟导入: openai SDK 很重 (pydantic 类型), 只在真正发请求时加载
+            import httpx
+            from openai import OpenAI
             # 分离连接与读超时; 流式场景读超时作为分片间最大空闲
-            timeout_cfg: Optional[float]
+            timeout_cfg: Any
             if self.connect_timeout and self.read_timeout:
                 timeout_cfg = httpx.Timeout(
                     connect=self.connect_timeout,
@@ -62,7 +65,7 @@ class OpenAICompatAdapter(ModelAdapter):
             self._client = OpenAI(
                 base_url=self.base_url,
                 api_key=self._api_key,
-                timeout=timeout_cfg,  # type: ignore[arg-type]
+                timeout=timeout_cfg,
                 max_retries=0,  # 重试用 agent 层统一控制, 避免 SDK 与业务逻辑双重重试
             )
         return self._client
@@ -187,6 +190,7 @@ class OpenAICompatAdapter(ModelAdapter):
     @staticmethod
     def classify_error(exc: Exception) -> Tuple[str, Optional[int]]:
         """把异常归类为 ('rate_limit'|'timeout'|'server'|'auth'|'other', status_code)。"""
+        import httpx
         # openai 库异常
         status = getattr(exc, "status_code", None)
         if status is None:

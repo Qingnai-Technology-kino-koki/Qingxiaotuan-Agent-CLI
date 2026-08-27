@@ -33,13 +33,13 @@ DONE = "done"
 
 STATES = (IDLE, THINKING, WORKING, ALERT, DONE)
 
-# 配色 (与 repl.C 一致的语义, 这里直接写 hex 供 SVG 使用)
+# 配色 (Kimi Code 官方 dark token: primary=#4FA8FF / accent=#5BC0BE / success=#4EC87E / warning=#E8A838 / error=#E85454)
 _PALETTE = {
-    IDLE:     {"body": "#2DD4BF", "dark": "#0F766E", "eye": "#0B3B38", "accent": "#5EEAD4"},
-    THINKING: {"body": "#38BDF8", "dark": "#0369A1", "eye": "#0B2540", "accent": "#BAE6FD"},
-    WORKING:  {"body": "#34D399", "dark": "#047857", "eye": "#053B2A", "accent": "#A7F3D0"},
-    ALERT:    {"body": "#FB923C", "dark": "#C2410C", "eye": "#3B1A06", "accent": "#FED7AA"},
-    DONE:     {"body": "#A78BFA", "dark": "#6D28D9", "eye": "#2A1A55", "accent": "#DDD6FE"},
+    IDLE:     {"body": "#4FA8FF", "dark": "#1E5FA8", "eye": "#0B2540", "accent": "#5BC0BE"},
+    THINKING: {"body": "#4FA8FF", "dark": "#1E5FA8", "eye": "#0B2540", "accent": "#7AD99B"},
+    WORKING:  {"body": "#4EC87E", "dark": "#1E7A48", "eye": "#053B2A", "accent": "#7AD99B"},
+    ALERT:    {"body": "#E8A838", "dark": "#92660A", "eye": "#3B1A06", "accent": "#F08585"},
+    DONE:     {"body": "#5BC0BE", "dark": "#1E6E6C", "eye": "#0B3B38", "accent": "#7AD99B"},
 }
 
 
@@ -67,16 +67,16 @@ class Mascot:
         return self._flow_color(_PALETTE[self.state]["body"])
 
     def _flow_color(self, state_color: str) -> str:
-        """在莫奈青与莫奈蓝之间缓慢呼吸，保留警告/完成状态的语义色。"""
+        """在 Kimi Code primary 与 accent 之间缓慢呼吸，保留警告/完成状态的语义色。"""
         if self.state in (ALERT, DONE):
             return state_color
-        teal = (45, 212, 191)
-        blue = (59, 130, 246)
+        accent = (91, 192, 190)   # #5BC0BE
+        primary = (79, 168, 255)  # #4FA8FF
         phase = (math.sin((time.monotonic() - self._started_at) * 0.9) + 1) / 2
         # 状态色作为中间权重，让思考偏蓝、工作偏青。
         state_rgb = self._hex(state_color)
         weight = 0.25 + phase * 0.5
-        rgb = tuple(round((1 - weight) * state_rgb[i] + weight * (blue[i] if self.state == THINKING else teal[i])) for i in range(3))
+        rgb = tuple(round((1 - weight) * state_rgb[i] + weight * (primary[i] if self.state == THINKING else accent[i])) for i in range(3))
         return "#%02X%02X%02X" % rgb
 
     # ---------------------------------------------------------- ASCII 帧
@@ -110,9 +110,8 @@ class Mascot:
         return re.sub(r"\033\[[0-9;]*m", "", body)
 
     def _wrap(self, body: str, color_hex: str) -> str:
-        # 用 24bit ANSI 着色 (大多数现代终端支持)
-        r, g, b = self._hex(color_hex)
-        return f"\033[38;2;{r};{g};{b}m{body}\033[0m"
+        # 无高亮: 直接返回纯文本, 不加任何 ANSI 颜色
+        return body
 
     @staticmethod
     def _hex(h: str) -> tuple[int, int, int]:

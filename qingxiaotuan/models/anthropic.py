@@ -53,8 +53,8 @@ class AnthropicAdapter(ModelAdapter):
             response.raise_for_status()
             return self._parse(response.json())
 
-    @staticmethod
-    def _convert_messages(messages: List[Dict[str, Any]]) -> tuple[str, List[Dict[str, Any]]]:
+    @classmethod
+    def _convert_messages(cls, messages: List[Dict[str, Any]]) -> tuple[str, List[Dict[str, Any]]]:
         system = "\n\n".join(str(m.get("content", "")) for m in messages if m.get("role") == "system")
         converted: List[Dict[str, Any]] = []
         for message in messages:
@@ -62,28 +62,64 @@ class AnthropicAdapter(ModelAdapter):
             if role == "system":
                 continue
             if role == "tool":
-                converted.append({"role": "user", "content": [{
-                    "type": "tool_result", "tool_use_id": message.get("tool_call_id", ""),
-                    "content": message.get("content", ""),
-                }]})
+                raw = message.get("content", "")
+                if isinstance(raw, list):
+                    blocks = cls._convert_content_blocks(raw)
+                    converted.append({"role": "user", "content": [{
+                        "type": "tool_result", "tool_use_id": message.get("tool_call_id", ""),
+                        "content": blocks,
+                    }]})
+                else:
+                    converted.append({"role": "user", "content": [{
+                        "type": "tool_result", "tool_use_id": message.get("tool_call_id", ""),
+                        "content": raw,
+                    }]})
                 continue
             if role == "assistant" and message.get("tool_calls"):
-                blocks: List[Dict[str, Any]] = []
+                assistant_blocks: List[Dict[str, Any]] = []
                 if message.get("content"):
-                    blocks.append({"type": "text", "text": message["content"]})
+                    assistant_blocks.append({"type": "text", "text": message["content"]})
                 for call in message["tool_calls"]:
                     fn = call.get("function", {})
                     try:
                         arguments = json.loads(fn.get("arguments", "{}"))
                     except json.JSONDecodeError:
                         arguments = {}
-                    blocks.append({"type": "tool_use", "id": call.get("id", ""),
-                                   "name": fn.get("name", ""), "input": arguments})
-                converted.append({"role": "assistant", "content": blocks})
+                    assistant_blocks.append({"type": "tool_use", "id": call.get("id", ""),
+                                             "name": fn.get("name", ""), "input": arguments})
+                converted.append({"role": "assistant", "content": assistant_blocks})
                 continue
-            converted.append({"role": "assistant" if role == "assistant" else "user",
-                              "content": message.get("content", "")})
+            raw = message.get("content", "")
+            if isinstance(raw, list):
+                # 多模态 content (text + image_url 块) -> 翻译为 Anthropic 块
+                converted.append({"role": "assistant" if role == "assistant" else "user",
+                                  "content": cls._convert_content_blocks(raw)})
+            else:
+                converted.append({"role": "assistant" if role == "assistant" else "user",
+                                  "content": raw})
         return system, converted
+
+    @staticmethod
+    def _convert_content_blocks(blocks: List[Dict[str, Any]]) -> List[Dict[str, Any]]:
+        """把 OpenAI 风格 content 块翻译为 Anthropic 块。
+
+        image_url 数据 URI -> Anthropic image source (base64);
+        远程 URL -> Anthropic image source (url); 其余块原样保留。
+        """
+        out: List[Dict[str, Any]] = []
+        for b in blocks:
+            if b.get("type") == "image_url":
+                url = b["image_url"]["url"]
+                if url.startswith("data:"):
+                    meta, b64 = url[5:].split(",", 1)
+                    mt = meta.split(";", 1)[0] or "image/png"
+                    out.append({"type": "image", "source": {
+                        "type": "base64", "media_type": mt, "data": b64}})
+                else:
+                    out.append({"type": "image", "source": {"type": "url", "url": url}})
+            else:
+                out.append(b)
+        return out
 
     @staticmethod
     def _convert_tool(tool: Dict[str, Any]) -> Dict[str, Any]:
@@ -109,6 +145,7 @@ class AnthropicAdapter(ModelAdapter):
                 on_token: Optional[Callable[[str], None]]) -> ModelResponse:
         payload["stream"] = True
         parts: List[str] = []
+        calls: List[ToolCall] = []
         tool_id = ""
         tool_name = ""
         tool_input = ""

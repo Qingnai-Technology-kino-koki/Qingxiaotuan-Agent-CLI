@@ -31,5 +31,8 @@ jobs:
           python -m compileall -q qingxiaotuan
           python -m compileall -q tests
 
+      - name: Type check (mypy)
+        run: python -m mypy qingxiaotuan
+
       - name: Test suite
         run: python -m pytest tests/ -q --basetemp="$RUNNER_TEMP/pytest"

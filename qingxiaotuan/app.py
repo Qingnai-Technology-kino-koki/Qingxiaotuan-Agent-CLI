@@ -16,7 +16,8 @@ from .config.plugin import ConfigPlugin
 from .tools import (
     ToolRegistryPlugin, FilesystemPlugin, ShellPlugin, WebPlugin, CodeToolPlugin,
     MemoryToolPlugin, SkillToolPlugin, LanguagePlugin, ExternalToolsPlugin,
-    DispatchPlugin, PipelinePlugin, CodeReviewPlugin,
+    DispatchPlugin, PipelinePlugin, CodeReviewPlugin, CheckpointPlugin,
+    TaskToolPlugin, SessionToolsPlugin,
 )
 from .memory.plugin import MemoryPlugin, SessionPlugin
 from .skills import SkillManager
@@ -26,6 +27,11 @@ from .models.plugin import ModelPlugin
 from .cron import CronPlugin
 from .self_improve import SelfImprovePlugin
 from .audit.plugin import AuditPlugin
+from .tools.mcp import MCPPlugin
+from .tools.subagent_tool import SubagentPlugin
+from .tools.messaging_tool import MessagingPlugin
+from .tools.workflow_tool import WorkflowPlugin
+from .tools.artifact_tool import ArtifactPlugin
 
 logger = logging.getLogger(__name__)
 
@@ -48,6 +54,9 @@ def build_kernel(profile: str = "default", patch_file: Optional[str] = None) -> 
     kernel.register(DispatchPlugin())
     kernel.register(PipelinePlugin())
     kernel.register(CodeReviewPlugin())
+    kernel.register(CheckpointPlugin())
+    kernel.register(TaskToolPlugin())
+    kernel.register(SessionToolsPlugin())
     kernel.register(MemoryPlugin())
     kernel.register(SessionPlugin())
     kernel.register(SkillPlugin())
@@ -56,13 +65,15 @@ def build_kernel(profile: str = "default", patch_file: Optional[str] = None) -> 
     kernel.register(CronPlugin())
     kernel.register(AuditPlugin())
     kernel.register(SelfImprovePlugin())
+    kernel.register(MCPPlugin())
+    kernel.register(SubagentPlugin())
+    kernel.register(MessagingPlugin())
+    kernel.register(WorkflowPlugin())
+    kernel.register(ArtifactPlugin())
 
     kernel.activate_all()
 
     config: Config = kernel.require("config")
-    if patch_file and Path(patch_file).exists():
-        config.load_patch(patch_file)
-
     # 首次启动播种内置技能 (幂等, 同名不覆盖)
     seed_builtin_skills(config)
 
@@ -75,6 +86,7 @@ def create_agent(
     confirm=None,
     exclude_tools=None,
     indexer=None,
+    system_extra: str = "",
 ) -> Agent:
     """创建 Agent (索引延迟构建, 不阻塞启动)。"""
     config: Config = kernel.require("config")
@@ -97,7 +109,26 @@ def create_agent(
         confirm=confirm,
         exclude_tools=exclude_tools,
         indexer=indexer,
+        system_extra=system_extra,
     )
+    # 事务化操作账本: 给 Agent 的 ToolContext 挂上 MutationLedger,
+    # 写类工具执行前自动快照、异常自动回滚、支持精细 undo (最小影响半径的事后可逆闭环)。
+    from .core.ledger import MutationLedger
+    agent.ctx.ledger = MutationLedger(workspace, config)
+    # 用户级 Hooks: 让用户在工具执行前/后挂载脚本, 把 Agent 变成可编排的。
+    # 安全: 命令强制 list(argv), 超时强杀, 阻断/改参权需显式声明 (fail-safe, 不阻断)。
+    try:
+        from .hooks.manager import HookManager
+        agent.ctx.hooks = HookManager(config, workspace, kernel=kernel)
+    except Exception:  # noqa: BLE001
+        agent.ctx.hooks = None
+    # 自定义斜杠命令: 把 <home>/commands 与 <workspace>/.qxt/commands 挂进分发链
+    # (运行期包装 _handle_slash, 幂等; 失败不影响主流程)。延迟导入避免 cli <-> app 环。
+    try:
+        from .cli.user_commands import install_user_commands
+        install_user_commands(agent, config, workspace)
+    except Exception as exc:  # noqa: BLE001
+        logger.debug("自定义斜杠命令安装失败: %s", exc)
     return agent
 
 

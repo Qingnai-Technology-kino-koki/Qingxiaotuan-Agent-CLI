@@ -1,0 +1,169 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>青小团 CLI vs Claude Code 2.1.x — 差距评估与补齐路线</title>
+<style>
+  :root{
+    --accent:#4FA8FF; --bg:#0e1420; --panel:#16202e; --panel2:#1c2938;
+    --text:#d7e3f4; --muted:#8aa0b8; --ok:#35c48a; --warn:#d6a35c; --err:#e06b6b;
+    --line:#253550;
+  }
+  *{box-sizing:border-box}
+  body{margin:0;background:var(--bg);color:var(--text);font-family:"Segoe UI",system-ui,-apple-system,"Microsoft YaHei",sans-serif;line-height:1.6}
+  .wrap{max-width:1080px;margin:0 auto;padding:48px 28px 80px}
+  header{border-bottom:1px solid var(--line);padding-bottom:24px;margin-bottom:32px}
+  .kicker{color:var(--accent);letter-spacing:.18em;font-size:13px;font-weight:600}
+  h1{font-size:30px;margin:8px 0 6px;font-weight:700}
+  .sub{color:var(--muted);font-size:15px}
+  .badges{display:flex;gap:10px;flex-wrap:wrap;margin-top:16px}
+  .badge{padding:5px 12px;border-radius:999px;font-size:12px;border:1px solid var(--line);color:var(--muted)}
+  .badge.hl{border-color:var(--accent);color:var(--accent)}
+  h2{font-size:21px;margin:44px 0 14px;color:#fff}
+  h3{font-size:16px;margin:26px 0 8px;color:var(--accent)}
+  p{color:var(--text)}
+  .lead{font-size:16px;color:var(--muted)}
+  .score{display:grid;grid-template-columns:repeat(auto-fit,minmax(150px,1fr));gap:12px;margin:20px 0}
+  .stat{background:var(--panel);border:1px solid var(--line);border-radius:12px;padding:16px 18px}
+  .stat .n{font-size:26px;font-weight:700;color:var(--accent)}
+  .stat .l{font-size:12px;color:var(--muted);margin-top:2px}
+  table{width:100%;border-collapse:collapse;background:var(--panel);border-radius:12px;overflow:hidden;font-size:13.5px}
+  th,td{padding:10px 12px;text-align:left;border-bottom:1px solid var(--line);vertical-align:top}
+  th{background:var(--panel2);color:#fff;font-weight:600;white-space:nowrap}
+  td.c{white-space:nowrap;font-weight:600}
+  .full{color:var(--ok)} .part{color:var(--warn)} .gap{color:var(--err)} .nil{color:var(--muted)}
+  .tag{display:inline-block;padding:1px 8px;border-radius:6px;font-size:11px;margin-right:4px}
+  .tag.ok{background:rgba(53,196,138,.15);color:var(--ok)}
+  .tag.part{background:rgba(214,163,92,.15);color:var(--warn)}
+  .tag.gap{background:rgba(224,107,107,.15);color:var(--err)}
+  ul{margin:6px 0 6px 0;padding-left:20px}
+  li{margin:4px 0}
+  .box{background:var(--panel);border:1px solid var(--line);border-left:3px solid var(--accent);border-radius:10px;padding:16px 18px;margin:14px 0}
+  .box.warn{border-left-color:var(--warn)} .box.ok{border-left-color:var(--ok)} .box.gap{border-left-color:var(--err)}
+  .grid2{display:grid;grid-template-columns:1fr 1fr;gap:14px}
+  @media(max-width:760px){.grid2{grid-template-columns:1fr}}
+  footer{margin-top:48px;padding-top:18px;border-top:1px solid var(--line);color:var(--muted);font-size:13px}
+  code{background:var(--panel2);padding:1px 6px;border-radius:5px;font-size:12.5px;color:var(--accent);font-family:Consolas,monospace}
+</style>
+</head>
+<body>
+<div class="wrap">
+<header>
+  <div class="kicker">GAP ASSESSMENT · QINGXIAOTUAN CLI</div>
+  <h1>青小团 CLI 与 Claude Code 2.1.x 差距评估与补齐路线</h1>
+  <div class="sub">基准：Claude Code v2.1.x（当前 upstream ~v2.1.246，以官方 docs 为权威）· 评估对象：青小团 v0.2.0（纯 Python 全栈）· 基准日期 2026-08-27</div>
+  <div class="badges">
+    <span class="badge hl">129 个模块</span><span class="badge hl">27 个插件已接线</span><span class="badge hl">60+ 工具</span><span class="badge hl">30+ 斜杠命令</span><span class="badge">626+ 测试</span><span class="badge">10 语言 i18n</span><span class="badge">零编译依赖纯标准库引擎</span>
+  </div>
+</header>
+
+<div class="score">
+  <div class="stat"><div class="n">高</div><div class="l">核心能力对齐度（agent 循环/工具/权限/会话/记忆/子代理/技能/MCP/Hooks）</div></div>
+  <div class="stat"><div class="n">中</div><div class="l">生态集成对齐度（IDE 扩展 / CI 自动评审 / LSP / headless 结构化）</div></div>
+  <div class="stat"><div class="n">超</div><div class="l">差异化能力（事务账本 undo / Swarm / 分层记忆 / 免费模型目录 / 引擎）</div></div>
+  <div class="stat"><div class="n">低</div><div class="l">企业级集成对齐度（gateway/SSO/Desktop/远程/云 Web）</div></div>
+</div>
+
+<h2>一、结论速览</h2>
+<p class="lead">青小团在「单机 Agent CLI 能力面」上与 Claude Code 2.1.x 的核心对齐度很高 —— 工具循环、权限分级、Plan 只读、会话恢复、上下文压缩、记忆分层、子代理、Skills、MCP、Hooks、成本统计、健康诊断均已具备；部分领域（<b>事务化可逆账本 / Swarm 协作 / 免费模型目录</b>）甚至领先。真实差距集中在两类：<b>① 已有工具却缺斜杠命令入口（"写了没接"）</b>，以及 <b>② 面向工程协作与生态的进阶能力</b>（IDE 集成、CI 自动评审、LSP、Auto 权限、headless 结构化输出等）。</p>
+<p class="lead">本轮实践已关闭第 ① 类 6 个入口并新增 <code>qxt usercmd</code>，全部通过测试；第 ② 类需按路线图分期投入。</p>
+
+<h2>二、能力矩阵对比</h2>
+<table>
+<thead><tr><th style="min-width:180px">能力维度</th><th>Claude Code 2.1.x</th><th>青小团现状</th><th style="width:70px"></th></tr></thead>
+<tbody>
+<tr><td>Agent 工具循环 / 流式 / 并行工具</td><td>核心能力</td><td><code>agent.py + tool_executor.py</code>，流式 on_token、只读工具并行、max_iterations 兜底</td><td class="c full">对齐</td></tr>
+<tr><td>文件工具 Read/Write/Edit/Glob/Grep/List</td><td>内置</td><td><code>filesystem.py</code> 全量（含 delete/move），Edit 精确 old/new 替换</td><td class="c full">对齐</td></tr>
+<tr><td>Shell / Web / 代码库工具</td><td>Bash / WebSearch / WebFetch / LSP</td><td><code>shell.py / web.py / code.py</code>（SSRF 防护、Symbol/Grep 索引）</td><td class="c part">部分</td></tr>
+<tr><td>权限系统：交互确认 / Plan / YOLO / 规则表</td><td>interactive、acceptEdits、plan、bypass，Allowlist 规则</td><td><code>permissions.py</code> 内置加固 + deny/ask/allow + Plan 拦截 + YOLO 红线</td><td class="c full">对齐</td></tr>
+<tr><td>会话管理 continue / resume / fork</td><td>-c / -r / fork</td><td><code>--resume</code> + <code>/resume</code>（编号/id/latest），JSONL 事件流</td><td class="c full">对齐</td></tr>
+<tr><td>headless：-p / --output-format / 结构化</td><td>print + text/json/stream-json</td><td><code>qxt run</code> 一次性任务（无逐 token 结构化 json 输出）</td><td class="c part">部分</td></tr>
+<tr><td>上下文压缩 compact / context / clear</td><td>核心</td><td>预算 60k、最近 14 条、结构化摘要，全有</td><td class="c full">对齐</td></tr>
+<tr><td>记忆：CLAUDE.md / 自动记忆</td><td>项目/用户/路径层级</td><td><code>QXT.md / AGENTS.md / CLAUDE.md</code> 分层自动发现合并 + FTS5 记忆</td><td class="c full">对齐(更普适)</td></tr>
+<tr><td>Subagent / 隔离上下文 / /subagent</td><td>核心</td><td><code>subagent_tool.py</code> + <code>core/subagents.py</code> 池；此前无斜杠入口</td><td class="c part">本轮已补</td></tr>
+<tr><td>Skills（SKILL.md / 发现机制）</td><td>核心</td><td><code>skills/</code> 内置技能 seed、资源技能、skill 工具</td><td class="c full">对齐</td></tr>
+<tr><td>MCP（add/list/call/test）</td><td>核心，多传输</td><td><code>tools/mcp/</code> stdio 客户端 + 桥接为 mcp__server__tool</td><td class="c full">对齐</td></tr>
+<tr><td>Hooks（Pre/PostToolUse、Session、Notification…）</td><td>12 种事件</td><td><code>hooks/manager.py</code>：Pre/PostToolUse + SessionStart/End 等；阻断/改参安全模型</td><td class="c part">部分</td></tr>
+<tr><td>成本 /cost /usage / 预算 /budget</td><td>core</td><td><code>/cost /usage</code> 已有；<code>router.budget_limit</code> 硬预算；<code>/budget</code> 此前缺斜杠</td><td class="c part">本轮已补 </td></tr>
+<tr><td>回滚 / 检查点</td><td>/rewind（依赖用户 git）</td><td><code>MutationLedger</code> 事务化快照 + 自动回滚 + <code>/undo /impact</code> <b>领先</b>；<code>/checkpoint</code> 斜杠此前缺</td><td class="c full">领先</td></tr>
+<tr><td>诊断 /doctor / 自更新</td><td>/doctor、claude update</td><td><code>qxt doctor</code> 健康检查；<code>qxt improve</code> 自我改进</td><td class="c part">部分</td></tr>
+<tr><td>输出风格 / 多语言</td><td>Output Styles</td><td>Output Styles + 10 语言 CLI 文案</td><td class="c full">对齐</td></tr>
+<tr><td>IDE 集成（VSCode / JetBrains 扩展）</td><td>官方扩展，inline diff</td><td>缺（纯终端 CLI；<code>qxt open file:line</code> 打通编辑器跳转）</td><td class="c gap">缺口</td></tr>
+<tr><td>CI 自动评审（GitHub Actions / PR review）</td><td>官方 code review / actions</td><td>有 <code>code_review</code> 工具，但无 CI 模板 / PR 自动接线</td><td class="c gap">缺口</td></tr>
+<tr><td>LSP 精确 go-to-def / find-refs</td><td>内置 LSP 工具</td><td><code>find_symbol / find_references</code> 基于索引（无语言服务器）</td><td class="c part">部分</td></tr>
+<tr><td>Auto 权限（classifier）</td><td>auto mode 回退决策</td><td>standard / yolo 双模式，无融合分类器 auto</td><td class="c gap">缺口</td></tr>
+<tr><td>NotebookEdit（Jupyter）</td><td>内置</td><td>缺</td><td class="c gap">缺口</td></tr>
+<tr><td>Desktop / Web 云 / 远程控制 / Slack / Channels</td><td>官方生态</td><td>缺（超出开源 CLI 范畴）</td><td class="c gap">缺口(低优先)</td></tr>
+</tbody>
+</table>
+
+<h2>三、已对齐的强项（无需动作）</h2>
+<div class="box ok">
+<ul>
+<li><b>事务化可逆账本</b>：写类工具<a>执行前自动快照 → 异常自动回滚 → 跨进程 <code>qxt undo</code></a>，这是 Claude Code 依赖用户 git 习惯所不具备的「最小影响半径」闭环。</li>
+<li><b>Swarm 多 Agent 协作</b>：强模型规划 → 弱模型并发执行 → 强模型验收，共享黑板。</li>
+<li><b>分层项目记忆</b>：工作区到 git 根沿途 <code>QXT.md/AGENTS.md/CLAUDE.md</code> 自动发现合并，兼容社区惯例。</li>
+<li><b>免费模型目录</b>：1095 个模型 ±免费标注、48+ 供应商、路由难度估算、客户端限流（免费层保护）。</li>
+<li><b>10 个纯标准库引擎</b>：diff/crypto/ansi/safety/json/search/index/rules/notify/skill-market，零编译依赖。</li>
+<li>多模态视觉门控、审计事件总线、Cron 守护、后台 worker、自我改进闭环、i18n。</li>
+</ul>
+</div>
+
+<h2>四、差距与优先级路线图</h2>
+<h3>P0　入口接线（已有工具 · 缺斜杠/子命令）—— 本轮已完成</h3>
+<div class="box ok">
+<p>工具均已接入内核但缺用户入口，属「写了没接」。本轮补齐并新增测试 <code>tests/test_slash_gaps.py</code>（7 项）：</p>
+<table>
+<thead><tr><th>入口</th><th>能力</th><th>对齐</th></tr></thead>
+<tbody>
+<tr><td><code>/permissions</code></td><td>展示规则表 / Shell 拒绝 / 网络白名单 / YOLO 红线的当前生效策略</td><td>/permissions</td></tr>
+<tr><td><code>/status</code></td><td>模型 / 模式 / 推理投入 / 上下文 / 用量摘要</td><td>/status</td></tr>
+<tr><td><code>/budget [USD]</code></td><td>查看 / 设置 <code>router.budget_limit</code>，到额自动停</td><td>/budget（成本管理）</td></tr>
+<tr><td><code>/checkpoint</code></td><td>save / list / restore，事务级回滚对话 + 文件</td><td>/rewind 增强版</td></tr>
+<tr><td><code>/web</code></td><td><code>/web &lt;URL&gt;</code> 抓取、<code>/web search &lt;q&gt;</code> 搜索</td><td>WebFetch 快捷入口</td></tr>
+<tr><td><code>/subagent</code></td><td>派发隔离子代理执行并回收摘要</td><td>/subagent</td></tr>
+<tr><td><code>qxt usercmd list</code></td><td>枚举两级自定义斜杠命令（用户级/项目级）</td><td>命令管理</td></tr>
+</tbody>
+</table>
+</div>
+
+<h3>P1　短期（工程协作核心，收益高）</h3>
+<table>
+<thead><tr><th style="min-width:170px">待补能力</th><th style="width:110px">现状</th><th>落地建议</th></tr></thead>
+<tbody>
+<tr><td><code>/parallel</code></td><td>工具已注册</td><td>给 <code>dispatch_tasks</code>（<code>dispatch.py</code>）接斜杠入口，并发派发多个隔离子代理</td></tr>
+<tr><td>headless 结构化输出</td><td><code>qxt run</code></td><td><code>qxt run --output-format json / stream-json</code>，<code>--include-partial-messages</code></td></tr>
+<tr><td>Hooks 事件补全</td><td>Pre/PostToolUse + Session</td><td>补 <code>UserPromptSubmit / Stop / SubagentStart/Stop / Notification / PostToolUseFailure / PermissionRequest</code></td></tr>
+<tr><td>LSP 精确跳转</td><td>索引式</td><td>按需拉起 pyright/gopls/ts 语言服务器的 Def/Refs/Hover，增强 codebase_map</td></tr>
+<tr><td>AskUserQuestion 超时自动继续</td><td>ask_user</td><td>确认超时（秒级）默认选择或继续，避免阻塞自动化</td></tr>
+<tr><td>Auto 权限分类器</td><td>standard/yolo</td><td>third mode：基于命令/路径风险度的 LLM/规则自动批准与回退</td></tr>
+<tr><td>NotebookEdit</td><td>缺</td><td>向后端注入 <code>nbformat</code> 单元级读写工具</td></tr>
+</tbody>
+</table>
+
+<h3>P2　中期（生态与自动化）</h3>
+<ul>
+<li><b>GitHub Actions CI 自动评审模板</b>：把 <code>code_review</code> 工具接到 PR 事件，产出 review comments。</li>
+<li><b>VSCode 扩展</b>：复用 <code>qxt open file:line</code> 与 diff 能力，做 inline diff / 集成终端（较大工程）。</li>
+<li><b>/usage 跨会话聚合</b>：基于 audit 账本生成日/周成本报表。</li>
+</ul>
+
+<h3>P3　长期 / 超范围</h3>
+<p>Desktop 应用、Web 云会话、远程控制、Slack / Channels、企业 gateway / SSO —— 属 Anthropic 平台生态，超出开源 CLI 定位，通常不作为「对齐」目标；如需企业化可用 <code>qxt audit</code> + Hooks 自建合规层。</p>
+
+<h2>五、本轮交付与验收</h2>
+<div class="box">
+<ul>
+<li><b>代码</b>：<code>cli/commands.py</code>（新增 6 个斜杠分支 + 6 个 helper + <code>cmd_usercmd</code> + 更新 <code>_HELP</code>）；<code>cli/parser.py</code>（注册 <code>usercmd</code> 子命令）。</li>
+<li><b>测试</b>：新增 <code>tests/test_slash_gaps.py</code> 7 项全绿；相关套件回归 <code>72 passed</code>。</li>
+<li><b>全程零依赖新增</b>（继续纯 Python 标准库 + 既有五件套）。</li>
+</ul>
+</div>
+
+<footer>
+评估依据：项目内 <code>CONTEXT_SUMMARY.md / TASK_QUEUE.md / app.py / tools/ / cli/</code> 实际代码事实 + Claude Code 官方 docs（code.claude.com/docs）与 GitHub Releases。所有「对齐/部分/缺口」标注均以可复核的代码/文档证据为准，非臆测。
+</footer>
+</div>
+</body>
+</html>

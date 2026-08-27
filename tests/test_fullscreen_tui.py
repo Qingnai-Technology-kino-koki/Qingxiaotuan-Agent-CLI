@@ -7,11 +7,21 @@
 
 import threading
 
+from prompt_toolkit.layout.processors import BeforeInput
+
 from qingxiaotuan.ui.fullscreen import FullScreenTUI
 
 
 def _tui():
     return FullScreenTUI(lambda _text: "ok")
+
+
+def _prompt_text(tui) -> str:
+    """读取输入框当前提示符 (TextArea 的 prompt 存于 BeforeInput 处理器)。"""
+    for p in tui.input.control.input_processors:
+        if isinstance(p, BeforeInput):
+            return p.text
+    return ""
 
 
 def test_fullscreen_tui_close_leaves_no_threads():
@@ -124,3 +134,56 @@ def test_context_panel_hidden_until_info_set():
     tui = _tui()
     side = "".join(text for _, text in tui._render_side())
     assert "上下文" not in side
+
+
+def test_mode_prompt_switches_with_mode():
+    """Kimi Code 风格: 输入框提示符随模式变化 (Agent ✨ / Plan 📋)。"""
+    tui = _tui()
+    assert _prompt_text(tui) == "✨ > "
+    tui.set_mode("plan")
+    assert _prompt_text(tui) == "📋 > "
+    tui.set_mode("agent")
+    assert _prompt_text(tui) == "✨ > "
+    tui.set_mode("bogus")  # 未知模式忽略
+    assert _prompt_text(tui) == "✨ > "
+
+
+def test_plan_mode_syncs_input_prompt():
+    tui = _tui()
+    tui.set_plan_mode(True)
+    assert tui._plan_mode is True
+    assert _prompt_text(tui) == "📋 > "
+    tui.set_plan_mode(False)
+    assert tui._plan_mode is False
+    assert _prompt_text(tui) == "✨ > "
+
+
+def test_cycle_mode_rotates_agent_plan_shell():
+    """Kimi Code 风格: Ctrl-X 循环切换 agent → plan → shell → agent。"""
+    tui = _tui()
+    assert tui._mode == "agent"
+    tui.cycle_mode()
+    assert tui._mode == "plan"
+    assert tui._plan_mode is True
+    assert _prompt_text(tui) == "📋 > "
+    tui.cycle_mode()
+    assert tui._mode == "shell"
+    assert tui._plan_mode is False
+    assert _prompt_text(tui) == "$ > "
+    tui.cycle_mode()
+    assert tui._mode == "agent"
+    assert tui._plan_mode is False
+    assert _prompt_text(tui) == "✨ > "
+    assert any("[模式]" in e for e in tui._events)
+
+
+def test_footer_renders_mode_badge():
+    tui = _tui()
+    tui.set_plan_mode(True)
+    tui.add_tokens(1234)
+    tui.set_context_pct(62.5)
+    footer = "".join(text for _, text in tui._render_footer())
+    assert "[plan]" in footer
+    assert "[PLAN]" in footer
+    assert "tok=1234" in footer
+    assert "ctx=62%" in footer

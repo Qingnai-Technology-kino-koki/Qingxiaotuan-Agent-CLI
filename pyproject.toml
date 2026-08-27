@@ -5,10 +5,24 @@ build-backend = "setuptools.build_meta"
 [project]
 name = "qingxiaotuan"
 version = "0.2.0"
-description = "青小团 CLI - 融合 DeepSeek Harness 插件化理念与 Hermes Agent 自进化理念的独立 Agent CLI (纯 Python 全栈)"
+description = "A safety-first AI agent CLI — blast-radius analysis blocks dangerous commands before execution. Pure Python, model-neutral, 10 capability engines."
 readme = "README.md"
 requires-python = ">=3.11"
 license = { text = "MIT" }
+keywords = ["ai", "agent", "cli", "code-agent", "terminal-agent", "safety", "blast-radius", "llm", "deepseek", "claude", "openai"]
+classifiers = [
+    "Development Status :: 4 - Beta",
+    "Intended Audience :: Developers",
+    "License :: OSI Approved :: MIT License",
+    "Operating System :: OS Independent",
+    "Programming Language :: Python :: 3",
+    "Programming Language :: Python :: 3.11",
+    "Programming Language :: Python :: 3.12",
+    "Programming Language :: Python :: 3.13",
+    "Topic :: Software Development :: Libraries :: Application Frameworks",
+    "Topic :: Software Development :: Code Generators",
+    "Topic :: System :: Systems Administration",
+]
 dependencies = [
     "openai>=1.40",
     "pyyaml>=6.0",
@@ -21,7 +35,14 @@ dependencies = [
 dev = [
     "pytest>=8.0",
     "pytest-asyncio>=0.23",
+    "mypy>=1.10",
 ]
+
+[project.urls]
+Homepage = "https://github.com/Qingnai-Technology-kino-koki/Qingxiaotuan-Agent-CLI"
+Repository = "https://github.com/Qingnai-Technology-kino-koki/Qingxiaotuan-Agent-CLI"
+Changelog = "https://github.com/Qingnai-Technology-kino-koki/Qingxiaotuan-Agent-CLI/blob/main/CHANGELOG.md"
+"Bug Tracker" = "https://github.com/Qingnai-Technology-kino-koki/Qingxiaotuan-Agent-CLI/issues"
 
 [project.scripts]
 qxt = "qingxiaotuan.cli:main"
@@ -32,3 +53,15 @@ include = ["qingxiaotuan*"]
 # 把内置技能模板与 SOUL.md 等资源文件打进 wheel (否则 pip install 后首次启动无技能)
 [tool.setuptools.package-data]
 qingxiaotuan = ["resources/**/*.md"]
+
+[tool.mypy]
+python_version = "3.11"
+warn_return_any = true
+warn_unused_configs = true
+ignore_missing_imports = true
+check_untyped_defs = false  # 逐步收紧: 先不强制所有函数都有类型注解
+no_implicit_optional = true
+warn_redundant_casts = true
+warn_unused_ignores = true
+show_error_codes = true
+

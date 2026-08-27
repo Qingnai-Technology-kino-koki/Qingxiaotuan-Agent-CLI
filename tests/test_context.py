@@ -172,3 +172,43 @@ def test_compact_force_folds_even_under_budget():
     assert any("【手动摘要】" in m.get("content", "") for m in new)
     # 最近 keep_recent 条保留
     assert "历史消息9" in new[-1]["content"]
+
+
+def test_agent_summarize_extracts_structure():
+    """Agent._summarize 应从消息中提取用户目标、文件路径、工具操作和结论, 而非截断拼接。"""
+    from qingxiaotuan.core.agent import Agent
+    # 模拟一段对话: 用户提问 → assistant 调工具 → 产出结论
+    messages = [
+        {"role": "user", "content": "帮我修复 main.py 中的 import 错误"},
+        {"role": "assistant", "content": "我来检查代码结构", "tool_calls": [
+            {"id": "t1", "function": {"name": "read_file", "arguments":
+             '{"path": "src/main.py"}'}},
+        ]},
+        {"role": "tool", "tool_call_id": "t1", "content": "import os\nimport sys"},
+        {"role": "assistant", "content": "发现问题: import 路径错误, 已修复", "tool_calls": [
+            {"id": "t2", "function": {"name": "str_replace", "arguments":
+             '{"path": "src/main.py", "old": "import os", "new": "from pathlib import Path"}'}},
+        ]},
+        {"role": "tool", "tool_call_id": "t2", "content": "OK"},
+        {"role": "user", "content": "再帮我检查 tests 目录"},
+        {"role": "assistant", "content": "测试目录结构完整, 无需修改。"},
+    ]
+    summary = Agent._summarize(None, messages)
+    # 应包含用户目标
+    assert "修复" in summary or "import" in summary
+    # 应包含涉及的文件
+    assert "src/main.py" in summary
+    # 应包含工具操作
+    assert "read_file" in summary or "str_replace" in summary
+    # 应包含结论
+    assert "修复" in summary or "测试" in summary
+    # 不应是空串或极短
+    assert len(summary) > 30
+
+
+def test_agent_summarize_empty_messages():
+    """空消息列表应返回 fallback 摘要而非崩溃。"""
+    from qingxiaotuan.core.agent import Agent
+    summary = Agent._summarize(None, [])
+    assert isinstance(summary, str)
+    assert len(summary) > 0

@@ -1,0 +1,15 @@
+{"seq": 1, "ts": 1787828696.8195677, "iso": "2026-08-27T11:04:56.819568+00:00", "type": "audit.ready", "payload": {"type": "audit.ready", "enabled": true, "persist": true}}
+{"seq": 2, "ts": 1787828696.8235676, "iso": "2026-08-27T11:04:56.823568+00:00", "type": "plugin.activated", "payload": {"type": "plugin.activated", "name": "audit"}}
+{"seq": 3, "ts": 1787828696.82757, "iso": "2026-08-27T11:04:56.827570+00:00", "type": "service.provided", "payload": {"type": "service.provided", "service": "self_improve", "owner": "self.improve"}}
+{"seq": 4, "ts": 1787828696.8306177, "iso": "2026-08-27T11:04:56.830618+00:00", "type": "service.provided", "payload": {"type": "service.provided", "service": "self_improve_rules", "owner": "self.improve"}}
+{"seq": 5, "ts": 1787828696.8326185, "iso": "2026-08-27T11:04:56.832618+00:00", "type": "plugin.activated", "payload": {"type": "plugin.activated", "name": "self.improve"}}
+{"seq": 6, "ts": 1787828696.8336217, "iso": "2026-08-27T11:04:56.833622+00:00", "type": "service.provided", "payload": {"type": "service.provided", "service": "mcp_clients", "owner": "mcp"}}
+{"seq": 7, "ts": 1787828696.83562, "iso": "2026-08-27T11:04:56.835620+00:00", "type": "plugin.activated", "payload": {"type": "plugin.activated", "name": "mcp"}}
+{"seq": 8, "ts": 1787828696.8366222, "iso": "2026-08-27T11:04:56.836622+00:00", "type": "plugin.activated", "payload": {"type": "plugin.activated", "name": "tools.subagent"}}
+{"seq": 9, "ts": 1787828696.8376205, "iso": "2026-08-27T11:04:56.837620+00:00", "type": "plugin.activated", "payload": {"type": "plugin.activated", "name": "tools.messaging"}}
+{"seq": 10, "ts": 1787828696.8386195, "iso": "2026-08-27T11:04:56.838619+00:00", "type": "plugin.activated", "payload": {"type": "plugin.activated", "name": "tools.workflow"}}
+{"seq": 11, "ts": 1787828696.8396194, "iso": "2026-08-27T11:04:56.839619+00:00", "type": "plugin.activated", "payload": {"type": "plugin.activated", "name": "tools.artifact"}}
+{"seq": 12, "ts": 1787828696.8406196, "iso": "2026-08-27T11:04:56.840620+00:00", "type": "plugin.activated", "payload": {"type": "plugin.activated", "name": "tools.memory"}}
+{"seq": 13, "ts": 1787828696.8416224, "iso": "2026-08-27T11:04:56.841622+00:00", "type": "plugin.activated", "payload": {"type": "plugin.activated", "name": "tools.skills"}}
+{"seq": 14, "ts": 1787828696.94017, "iso": "2026-08-27T11:04:56.940170+00:00", "type": "service.provided", "payload": {"type": "service.provided", "service": "model_adapter", "owner": "model"}}
+{"seq": 15, "ts": 1787828696.9421706, "iso": "2026-08-27T11:04:56.942171+00:00", "type": "model.switched", "payload": {"type": "model.switched", "provider": "openai-compatible", "model": "gpt-4o-mini"}}

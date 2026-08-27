@@ -1,16 +1,18 @@
 """外部能力引擎集成 - 纯 Python 引擎
 
-替代原来的 C/TS 外部引擎, 现在全部使用 Python 实现。
-引擎通过 JSONL IPC 协议通信。
+引擎通过进程内直调与内核对话 (零 IPC 开销)。
 """
 import json
 import logging
 import os
-from typing import Any, Dict
+from typing import Any, Dict, Optional, cast
 
 from ..core.kernel import Kernel, Plugin
-from ..core.ipc_client import ExternalEngineManager, get_engine_manager, IpcError
+from ..ext.registry import get_engine, ENGINE_MAP
 from .base import Tool, ToolContext
+
+# 引擎实例缓存: 同一引擎只实例化一次, 避免重复创建
+_ENGINE_INSTANCES: Dict[str, Any] = {}
 
 logger = logging.getLogger(__name__)
 
@@ -34,13 +36,41 @@ def _fmt(result: Any) -> str:
     return json.dumps(result, ensure_ascii=False, indent=2)
 
 
+def _get_engine(name: str) -> Any:
+    """获取或缓存引擎实例 (进程内直调, 零 IPC 开销)。"""
+    if name not in _ENGINE_INSTANCES:
+        _ENGINE_INSTANCES[name] = get_engine(name)
+    return _ENGINE_INSTANCES[name]
+
+
 def _call(engine: str, method: str, params: dict, timeout: int = 30) -> Any:
-    """调用引擎并返回结构化结果; 失败返回 {"error": ...} 而非抛异常。"""
-    manager = get_engine_manager()
+    """进程内直调引擎方法, 返回结构化结果; 失败返回 {"error": ...} 而非抛异常。
+
+    兼容两种引擎接口:
+    1. methods 字典模式 (safety/crypto/diff/ansi/index/json/search/notify): instance.methods[method](params)
+    2. handle(line) IPC 协议模式 (rules/skill-market): 通过 JSONL 协议转发
+    """
     try:
-        return manager.call(engine, method, params, timeout=timeout)
-    except IpcError as exc:
-        return {"error": f"外部引擎错误: {exc}"}
+        instance = _get_engine(engine)
+        # 模式1: methods 字典 (推荐, 最高效)
+        methods_dict = getattr(instance, 'methods', None)
+        if isinstance(methods_dict, dict):
+            handler = methods_dict.get(method)
+            if handler is None:
+                return {"error": f"引擎 {engine} 未知方法: {method}"}
+            return handler(params)
+        # 模式2: handle(line) IPC 协议兼容 (rules/skill-market)
+        handle_fn = getattr(instance, 'handle', None)
+        if callable(handle_fn):
+            import json as _json
+            req = {"id": 1, "method": method, "params": params}
+            resp_str = handle_fn(_json.dumps(req, ensure_ascii=False))
+            resp = _json.loads(resp_str)
+            if resp.get("ok"):
+                return resp.get("result")
+            else:
+                return {"error": resp.get("error", f"引擎 {engine} 方法 {method} 失败")}
+        return {"error": f"引擎 {engine} 无可用接口 (无 methods 字典或 handle 方法)"}
     except Exception as exc:  # noqa: BLE001
         return {"error": f"{type(exc).__name__}: {exc}"}
 
@@ -48,7 +78,7 @@ def _call(engine: str, method: str, params: dict, timeout: int = 30) -> Any:
 def _diff(ctx, old: str, new: str) -> str:
     res = _call("diff", "diff", {"old": old, "new": new})
     if isinstance(res, dict) and "diff" in res:
-        return res["diff"]
+        return cast(str, res["diff"])
     return _fmt(res)
 
 
@@ -96,7 +126,7 @@ def _safety_score(ctx, command: str) -> str:
 def _ansi_strip(ctx, text: str) -> str:
     res = _call("ansi", "strip", {"text": text})
     if isinstance(res, dict) and "text" in res:
-        return res["text"]
+        return cast(str, res["text"])
     return _fmt(res)
 
 
@@ -243,7 +273,7 @@ class ExternalToolsPlugin(Plugin):
             ),
             Tool(
                 name="ext_crypto_seal",
-                description="AES-256-GCM 加密 (纯 Python), 返回 blob 与 salt_b64",
+                description="口令加密 (PBKDF2 派生 + SHA256-keystream 流式加密), 返回 blob 与 salt_b64",
                 parameters={
                     "type": "object",
                     "properties": {
@@ -257,7 +287,7 @@ class ExternalToolsPlugin(Plugin):
             ),
             Tool(
                 name="ext_crypto_unseal",
-                description="AES-256-GCM 解密 (纯 Python), 需 blob/salt/口令",
+                description="口令解密 (对应 ext_crypto_seal), 需 blob/salt/口令",
                 parameters={
                     "type": "object",
                     "properties": {
