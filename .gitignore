@@ -1,32 +1,28 @@
-﻿# 敏感配置
-.env
-.env.*
-*.pem
-*.key
-*.p12
-config.local.*
-secrets.*
+﻿# ===== pytest 临时目录 =====
+.pytest_tmp/
+.pytest-tmp/
+.pytest_cache/
+.pt-*/
+.pt-full-*/
+.pt-win-*/
 
-# Python
+# ===== 调试/临时文件 =====
+.scratch/
+
+# ===== Python 构建产物 =====
+*.egg-info/
 __pycache__/
 *.py[cod]
-*.so
-.Python
+.venv/
 venv/
 env/
-.venv/
 
-# Node
-node_modules/
-dist/
-build/
-*.log
-
-# IDE
+# ===== 系统/IDE =====
+.DS_Store
+Thumbs.db
 .vscode/
 .idea/
 *.swp
 
-# 系统文件
-.DS_Store
-Thumbs.db
+# ===== 日志 =====
+*.log

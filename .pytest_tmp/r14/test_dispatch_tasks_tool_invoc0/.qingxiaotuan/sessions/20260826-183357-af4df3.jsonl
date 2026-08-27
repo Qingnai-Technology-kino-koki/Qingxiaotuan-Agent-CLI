@@ -1,4 +1,0 @@
-{"ts": 1787740437.3058867, "type": "user", "message": {"role": "user", "content": "研究Y"}}
-{"ts": 1787740437.3076067, "type": "user", "message": {"role": "user", "content": "研究X"}}
-{"ts": 1787740437.3139665, "type": "assistant", "message": {"role": "assistant", "content": "回声: 研究Y", "tool_calls": []}}
-{"ts": 1787740437.319052, "type": "assistant", "message": {"role": "assistant", "content": "回声: 研究X", "tool_calls": []}}

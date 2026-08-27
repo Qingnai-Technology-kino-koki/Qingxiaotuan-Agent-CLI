@@ -1,1 +1,0 @@
-{"scripts": {"typecheck": "tsc", "test": "vitest"}}

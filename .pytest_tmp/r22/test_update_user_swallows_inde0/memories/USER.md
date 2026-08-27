@@ -1,1 +1,0 @@
-- preferred_model: deepseek-chat

@@ -1,9 +1,0 @@
-{"ts": 1787739857.4185364, "type": "session.meta", "kind": "background", "job_id": "worker-e2e-001", "task": "读取 note.txt", "started_at": 1787739853.4466321}
-{"ts": 1787739857.423564, "type": "job.start", "job_id": "worker-e2e-001", "task": "读取 note.txt"}
-{"ts": 1787739857.8665075, "type": "user", "message": {"role": "user", "content": "读取 note.txt"}}
-{"ts": 1787739864.0510156, "type": "assistant", "message": {"role": "assistant", "content": "", "tool_calls": [{"id": "call_1", "function": {"name": "read_file", "arguments": "{\"path\": \"note.txt\"}"}}]}}
-{"ts": 1787739864.0537183, "type": "tool_call", "name": "read_file", "arguments": "{\"path\": \"note.txt\"}"}
-{"ts": 1787739864.0650957, "type": "tool", "message": {"role": "tool", "tool_call_id": "call_1", "name": "read_file", "content": "# E:\\Qingxiaotuan Agent CLI\\.pytest_tmp\\test_worker_subprocess_runs_ta0\\ws\\note.txt\n后台任务数据"}, "name": "read_file", "content": "# E:\\Qingxiaotuan Agent CLI\\.pytest_tmp\\test_worker_subprocess_runs_ta0\\ws\\note.txt\n后台任务数据"}
-{"ts": 1787739864.0864005, "type": "assistant", "message": {"role": "assistant", "content": "已读取: 后台任务数据\n【已完成】后台任务完成", "tool_calls": []}}
-{"ts": 1787739864.1020677, "type": "agent.turn", "turn": 2, "summary": "已读取: 后台任务数据\n【已完成】后台任务完成"}
-{"ts": 1787739864.1155043, "type": "job.done", "job_id": "worker-e2e-001", "turns": 2}

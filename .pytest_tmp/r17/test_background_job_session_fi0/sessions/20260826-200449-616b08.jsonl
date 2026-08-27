@@ -1,3 +1,0 @@
-{"ts": 1787745889.3887222, "type": "session.meta", "kind": "background", "job_id": "bg-x1", "task": "示例后台任务"}
-{"ts": 1787745889.394023, "type": "user", "message": {"role": "user", "content": "开始"}}
-{"ts": 1787745889.3993344, "type": "assistant", "message": {"role": "assistant", "content": "好的"}}

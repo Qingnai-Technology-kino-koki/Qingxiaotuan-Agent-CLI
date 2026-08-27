@@ -1,6 +1,0 @@
-{"ts": 1787746932.6613574, "type": "user", "message": {"role": "user", "content": "子任务2"}}
-{"ts": 1787746932.6693983, "type": "assistant", "message": {"role": "assistant", "content": "回声: 子任务0", "tool_calls": []}}
-{"ts": 1787746932.6717415, "type": "assistant", "message": {"role": "assistant", "content": "回声: 子任务2", "tool_calls": []}}
-{"ts": 1787746932.722361, "type": "user", "message": {"role": "user", "content": "子任务4"}}
-
-{"ts": 1787746932.7313547, "type": "assistant", "message": {"role": "assistant", "content": "回声: 子任务3", "tool_calls": []}}

@@ -1,2 +1,0 @@
-{"ts": 1787740428.683552, "type": "user", "message": {"role": "user", "content": "慢任务"}}
-{"ts": 1787740433.689636, "type": "assistant", "message": {"role": "assistant", "content": "迟到的结果", "tool_calls": []}}

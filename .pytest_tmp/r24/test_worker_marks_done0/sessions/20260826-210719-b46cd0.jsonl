@@ -1,4 +1,0 @@
-{"ts": 1787749639.548262, "type": "session.meta", "kind": "background", "job_id": "bg-w2", "task": "task", "started_at": 1787749639.462885}
-{"ts": 1787749639.5570006, "type": "job.start", "job_id": "bg-w2", "task": "task"}
-{"ts": 1787749639.5830548, "type": "agent.turn", "turn": 1, "summary": "任务完成 ✓"}
-{"ts": 1787749639.6154897, "type": "job.done", "job_id": "bg-w2", "turns": 1}

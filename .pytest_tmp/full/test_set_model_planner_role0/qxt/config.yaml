@@ -1,4 +1,0 @@
-model:
-  planner:
-    provider: claude-gw
-    model: claude-3-5

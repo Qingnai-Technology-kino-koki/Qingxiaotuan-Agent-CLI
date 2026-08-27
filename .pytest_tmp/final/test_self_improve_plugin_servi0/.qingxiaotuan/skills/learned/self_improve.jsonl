@@ -1,2 +1,0 @@
-{"id": "self-improve-lint-ext_crypto_seal", "severity": "medium", "action": "confirm", "match": {"tool": "ext_crypto_seal"}, "message": "该工具曾因 ValueError 失败 2 次, 调用前请校验参数", "meta": {"source": "self-improve", "generated_at": "2026-08-26T20:11:21"}}
-{"id": "self-improve-guard-ext_safety_score", "severity": "high", "action": "confirm", "match": {"tool": "ext_safety_score"}, "message": "该操作历史上被拒绝 3 次, 需人工确认", "meta": {"source": "self-improve", "generated_at": "2026-08-26T20:11:21"}}

@@ -1,1 +1,0 @@
-{"id": "g1", "severity": "high", "action": "confirm", "match": {"tool": "run_shell"}, "message": "历史拒绝经验", "meta": {"source": "self-improve"}}

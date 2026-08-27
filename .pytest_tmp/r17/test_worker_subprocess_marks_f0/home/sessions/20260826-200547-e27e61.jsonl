@@ -1,5 +1,0 @@
-{"ts": 1787745947.3029215, "type": "session.meta", "kind": "background", "job_id": "worker-e2e-002", "task": "必然失败的任务", "started_at": 1787745943.8873384}
-{"ts": 1787745947.3100193, "type": "job.start", "job_id": "worker-e2e-002", "task": "必然失败的任务"}
-{"ts": 1787745947.9663908, "type": "user", "message": {"role": "user", "content": "必然失败的任务"}}
-{"ts": 1787745963.605956, "type": "agent.turn", "turn": 1, "summary": "[模型错误] 模型调用失败 (已重试 3 次): Error code: 500 - {'error': 'script exhausted'}"}
-{"ts": 1787745963.6293614, "type": "job.error", "job_id": "worker-e2e-002", "error": "[模型错误] 模型调用失败 (已重试 3 次): Error code: 500 - {'error': 'script exhausted'}"}

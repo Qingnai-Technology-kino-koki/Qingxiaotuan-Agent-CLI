@@ -1,4 +1,0 @@
-{"ts": 1787739821.2470996, "type": "session.meta", "kind": "cron", "job_id": "dfae6e75", "name": "任务0", "prompt": "prompt0", "started_at": 1787739821.247097}
-{"ts": 1787739821.2527769, "type": "user", "role": "user", "content": "prompt0"}
-{"ts": 1787739821.2580018, "type": "assistant", "role": "assistant", "content": "ok"}
-{"ts": 1787739821.2807777, "type": "job.done", "job_id": "dfae6e75", "ok": true, "session_file": "E:\\Qingxiaotuan Agent CLI\\.pytest_tmp\\r13\\test_run_due_jobs_counts0\\sessions\\20260826-182341-6dada9.jsonl"}

@@ -1,4 +1,0 @@
-{"ts": 1787739630.7659862, "type": "user", "message": {"role": "user", "content": "a"}}
-{"ts": 1787739630.7723455, "type": "assistant", "message": {"role": "assistant", "content": "ok", "tool_calls": []}}
-{"ts": 1787739630.7791362, "type": "user", "message": {"role": "user", "content": "b"}}
-{"ts": 1787739630.7841797, "type": "assistant", "message": {"role": "assistant", "content": "ok", "tool_calls": []}}

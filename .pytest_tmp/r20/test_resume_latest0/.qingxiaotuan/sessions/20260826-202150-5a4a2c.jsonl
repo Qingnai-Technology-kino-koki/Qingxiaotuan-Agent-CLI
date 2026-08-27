@@ -1,5 +1,0 @@
-{"ts": 1787746910.3509867, "type": "session.meta", "task": "第二个会话"}
-{"ts": 1787746910.3568316, "type": "user", "message": {"role": "user", "content": "第二个会话"}}
-{"ts": 1787746910.362175, "type": "assistant", "message": {"role": "assistant", "content": "收到, 我来处理。"}}
-{"ts": 1787746910.3678484, "type": "tool_call", "name": "read_file", "arguments": "{}"}
-{"ts": 1787746910.3727055, "type": "tool", "message": {"role": "tool", "tool_call_id": "c1", "name": "read_file", "content": "file content"}, "name": "read_file", "content": "file content"}

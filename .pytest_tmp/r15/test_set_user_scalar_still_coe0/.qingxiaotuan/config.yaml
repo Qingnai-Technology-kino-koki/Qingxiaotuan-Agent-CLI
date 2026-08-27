@@ -1,4 +1,0 @@
-agent:
-  max_iterations: 50
-mode:
-  default: yolo

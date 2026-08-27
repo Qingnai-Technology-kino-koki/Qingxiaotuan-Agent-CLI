@@ -1,2 +1,0 @@
-[console_scripts]
-qxt = qingxiaotuan.cli:main

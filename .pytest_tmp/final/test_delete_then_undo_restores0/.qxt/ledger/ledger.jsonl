@@ -1,1 +1,0 @@
-{"id": "m0001", "ts": 1787746200.7310169, "tool": "delete_file", "kind": "mutation", "summary": "", "targets": ["a.txt"], "snaps_meta": [{"rel": "a.txt", "snap": "E:\\Qingxiaotuan Agent CLI\\.pytest_tmp\\final\\test_delete_then_undo_restores0\\.qxt\\ledger\\s1787746200633783700_0001_0.bin", "existed": true, "kind": "file"}]}

@@ -2687,6 +2687,31 @@ def cmd_impact(args) -> int:
             bar = "#" * min(count, 30)
             ui.info(f"    {tool:24s} {count:3d}  {bar}")
 
+    # ---- 时间密度直方图 (按 5 分钟桶)
+    if history:
+        ui.info("")
+        ui.info("  活动时间线 (每 5 分钟)")
+        timestamps = [rec["ts"] for rec in history]
+        t_min, t_max = min(timestamps), max(timestamps)
+        bucket_sec = 300  # 5 分钟
+        buckets: dict[int, int] = {}
+        for ts in timestamps:
+            bid = int((ts - t_min) / bucket_sec)
+            buckets[bid] = buckets.get(bid, 0) + 1
+        if buckets:
+            max_count = max(buckets.values())
+            n_buckets = max(buckets.keys()) + 1
+            width = 30  # 柱状图最大宽度
+            for i in range(n_buckets):
+                c = buckets.get(i, 0)
+                if c == 0:
+                    bar = "_"
+                else:
+                    bar = "#" * max(1, round(c / max_count * width))
+                # 时间标签: 从 t_min 开始
+                mins = int((t_min + i * bucket_sec) / 60) % 60
+                ui.info(f"    {mins:02d}min  {bar} ({c})")
+
     # ---- 文件列表
     if stats["files"]:
         ui.info("")
@@ -2705,6 +2730,10 @@ def cmd_impact(args) -> int:
         if len(rec["targets"]) > 3:
             targets += f" +{len(rec['targets']) - 3}"
         ui.info(f"    [{rec['id']}] {ts} {rec['tool']}: {targets}")
+
+    # ---- 摘要
+    ui.info("")
+    ui.info(f"  --- {stats['records']} 次操作 / {stats['files_touched']} 个文件 / {len(ext_counts)} 种类型 ---")
     return 0
 
 
@@ -2894,6 +2923,7 @@ def _cmd_undo(workspace: str, arg: str, agent) -> None:
 def _cmd_impact(workspace: str, arg: str, agent) -> None:
     """展示事务化操作账本与当前影响半径 (哪些文件被改、改了几步)。"""
     from datetime import datetime
+    from pathlib import Path
 
     ledger = _get_ledger(agent)
     if ledger is None:
@@ -2903,13 +2933,83 @@ def _cmd_impact(workspace: str, arg: str, agent) -> None:
         ui.info("  操作账本为空: 本次会话尚未修改任何文件。")
         return
     stats = ledger.stats()
-    ui.info(f"  影响半径: {stats['records']} 次操作, 涉及 {stats['files_touched']} 个文件")
-    if stats["files"]:
-        preview = stats["files"][:20]
-        tail = f" …还有 {len(stats['files']) - 20} 个" if len(stats["files"]) > 20 else ""
-        ui.info("  " + "  ".join(preview) + tail)
+    history = ledger.history()
+
+    # ---- 统计概览
     ui.info("")
-    ui.info("  最近变更凭证:")
-    for rec in ledger.history()[-15:]:
+    ui.info("  === 影响半径 (Blast Radius) ===")
+    ui.info("")
+    ui.info(f"  操作总数: {stats['records']}")
+    ui.info(f"""  受影响文件: {stats['files_touched']} 个""")
+
+    # ---- 文件分类统计 (按扩展名)
+    ext_counts: dict[str, int] = {}
+    for f in stats["files"]:
+        ext = Path(f).suffix or "(no ext)"
+        ext_counts[ext] = ext_counts.get(ext, 0) + 1
+    if ext_counts:
+        ui.info("")
+        ui.info("  文件类型分布:")
+        for ext, count in sorted(ext_counts.items(), key=lambda x: -x[1]):
+            bar = "#" * min(count, 30)
+            ui.info(f"    {ext:12s} {count:3d}  {bar}")
+
+    # ---- 工具使用统计
+    tool_counts: dict[str, int] = {}
+    for rec in history:
+        t = rec["tool"]
+        tool_counts[t] = tool_counts.get(t, 0) + 1
+    if tool_counts:
+        ui.info("")
+        ui.info("  工具使用分布:")
+        for tool, count in sorted(tool_counts.items(), key=lambda x: -x[1]):
+            bar = "#" * min(count, 30)
+            ui.info(f"    {tool:24s} {count:3d}  {bar}")
+
+    # ---- 时间密度直方图 (按 5 分钟桶)
+    if history:
+        ui.info("")
+        ui.info("  活动时间线 (每 5 分钟)")
+        timestamps = [rec["ts"] for rec in history]
+        t_min, t_max = min(timestamps), max(timestamps)
+        bucket_sec = 300  # 5 分钟
+        buckets: dict[int, int] = {}
+        for ts in timestamps:
+            bid = int((ts - t_min) / bucket_sec)
+            buckets[bid] = buckets.get(bid, 0) + 1
+        if buckets:
+            max_count = max(buckets.values())
+            n_buckets = max(buckets.keys()) + 1
+            width = 30  # 柱状图最大宽度
+            for i in range(n_buckets):
+                c = buckets.get(i, 0)
+                if c == 0:
+                    bar = "_"
+                else:
+                    bar = "#" * max(1, round(c / max_count * width))
+                # 时间标签: 从 t_min 开始
+                mins = int((t_min + i * bucket_sec) / 60) % 60
+                ui.info(f"    {mins:02d}min  {bar} ({c})")
+
+    # ---- 文件列表
+    if stats["files"]:
+        ui.info("")
+        ui.info("  受影响文件:")
+        for f in stats["files"][:30]:
+            ui.info(f"    {f}")
+        if len(stats["files"]) > 30:
+            ui.info(f"    ...还有 {len(stats['files']) - 30} 个")
+
+    # ---- 最近变更时间线
+    ui.info("")
+    ui.info("  最近变更时间线:")
+    for rec in history[-15:]:
         ts = datetime.fromtimestamp(rec["ts"]).strftime("%H:%M:%S")
-        ui.info(f"    [{rec['id']}] {ts} {rec['tool']}: {', '.join(rec['targets'])}")
+        targets = ", ".join(rec["targets"][:3])
+        if len(rec["targets"]) > 3:
+            targets += f" +{len(rec['targets']) - 3}"
+        ui.info(f"    [{rec['id']}] {ts} {rec['tool']}: {targets}")
+
+    # ---- 摘要
+    ui.info("")
+    ui.info(f"  --- {stats['records']} 次操作 / {stats['files_touched']} 个文件 / {len(ext_counts)} 种类型 ---")

@@ -1,5 +1,0 @@
-{"ts": 1787739787.5681708, "type": "user", "message": {"role": "user", "content": "读 hello.txt"}}
-{"ts": 1787739794.2884781, "type": "assistant", "message": {"role": "assistant", "content": "", "tool_calls": [{"id": "call_1", "function": {"name": "read_file", "arguments": "{\"path\": \"hello.txt\"}"}}]}}
-{"ts": 1787739794.2936761, "type": "tool_call", "name": "read_file", "arguments": "{\"path\": \"hello.txt\"}"}
-{"ts": 1787739794.3085198, "type": "tool", "message": {"role": "tool", "tool_call_id": "call_1", "name": "read_file", "content": "# E:\\Qingxiaotuan Agent CLI\\.pytest_tmp\\r13\\test_cli_run_headless_with_moc0\\ws\\hello.txt\nCLI 端到端"}, "name": "read_file", "content": "# E:\\Qingxiaotuan Agent CLI\\.pytest_tmp\\r13\\test_cli_run_headless_with_moc0\\ws\\hello.txt\nCLI 端到端"}
-{"ts": 1787739794.332475, "type": "assistant", "message": {"role": "assistant", "content": "CLI 端到端测试通过", "tool_calls": []}}

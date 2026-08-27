@@ -1,2 +1,0 @@
-{"ts": 1787745862.9092603, "type": "usage", "turn": 1, "delta": {"prompt_tokens": 100, "completion_tokens": 20}, "provider": "deepseek", "model": "deepseek-chat", "cost_usd": 0.02}
-{"ts": 1787745862.9185817, "type": "usage", "turn": 2, "delta": {"prompt_tokens": 50, "completion_tokens": 30, "prompt_cache_hit_tokens": 40}, "provider": "groq", "model": "llama-4", "cost_usd": null}

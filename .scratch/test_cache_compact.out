@@ -1,7 +1,0 @@
-......F.                                                                 [100%]
-================================== FAILURES ===================================
-E   AttributeError: 'Agent' object has no attribute 'cache_hit_rate'
-E:\Qingxiaotuan Agent CLI\tests\test_cache_compact.py:150: AttributeError: 'Agent' object has no attribute 'cache_hit_rate'
-=========================== short test summary info ===========================
-FAILED tests/test_cache_compact.py::test_cache_hit_rate_accumulates - AttributeError: 'Agent' object has no attribute 'cache_hit_rate'
-1 failed, 7 passed in 2.91s

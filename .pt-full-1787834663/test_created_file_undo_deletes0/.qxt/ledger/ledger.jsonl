@@ -1,1 +1,0 @@
-{"id": "m0001", "ts": 1787834843.9507954, "tool": "write_file", "kind": "mutation", "summary": "", "targets": ["new.txt"], "snaps_meta": [{"rel": "new.txt", "snap": null, "existed": false, "kind": "file"}]}

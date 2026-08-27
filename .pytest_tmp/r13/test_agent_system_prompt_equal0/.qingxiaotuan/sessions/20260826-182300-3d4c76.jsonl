@@ -1,2 +1,0 @@
-{"ts": 1787739780.8905606, "type": "user", "message": {"role": "user", "content": "[上下文召回] 找到 1 条相关记忆:\n  1. [近期] 用户偏好用 pytest 跑测试\n\n怎么跑测试"}}
-{"ts": 1787739780.8977454, "type": "assistant", "message": {"role": "assistant", "content": "ok", "tool_calls": []}}
