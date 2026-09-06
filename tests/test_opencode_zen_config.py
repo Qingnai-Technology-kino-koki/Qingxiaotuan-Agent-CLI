@@ -15,6 +15,7 @@ from qingxiaotuan.models.openai_compat import OpenAICompatAdapter
 from qingxiaotuan.logging_conf import redact, setup_logging
 from qingxiaotuan.core.agent import Agent
 from qingxiaotuan.core.retry import RateLimiter, RetryPolicy
+from qingxiaotuan.models.provider_catalog import get_provider, get_provider_models
 
 
 # ---------------------------------------------------------------- 预设 profile
@@ -23,7 +24,7 @@ def test_preset_opencode_zen_exists():
     assert "opencode-zen" in PRESET_PROFILES
     prof = PRESET_PROFILES["opencode-zen"]["model"]
     assert prof["base_url"] == "https://opencode.ai/zen/v1"
-    assert prof["model"] == "deepseek-v4-flash-free"
+    assert prof["model"] == "deepseek-v4-free"
     assert prof["api_key_env"] == "OPENCODE_ZEN_API_KEY"
 
 
@@ -31,7 +32,7 @@ def test_preset_profile_applied_on_load(qxt_home):
     cfg = Config(profile="opencode-zen")
     assert cfg.get("model.provider") == "opencode-zen"
     assert cfg.get("model.base_url") == "https://opencode.ai/zen/v1"
-    assert cfg.get("model.model") == "deepseek-v4-flash-free"
+    assert cfg.get("model.model") == "deepseek-v4-free"
 
 
 def test_user_config_overrides_preset(qxt_home):
@@ -42,6 +43,30 @@ def test_user_config_overrides_preset(qxt_home):
     assert cfg.get("model.model") == "other-model"
     # 预设的 base_url 仍保留
     assert cfg.get("model.base_url") == "https://opencode.ai/zen/v1"
+
+
+# ---------------------------------------------------------------- 模型目录
+
+def test_opencode_zen_catalog_registered_and_default_first():
+    preset = get_provider("opencode-zen")
+    assert preset is not None
+    # 默认模型 = 实际可用模型 (清单第一项), 且被目录覆盖为 deepseek-v4-free
+    assert preset.model == "deepseek-v4-free"
+    models = get_provider_models("opencode-zen")
+    assert models and models[0].split("|")[0] == "deepseek-v4-free"
+    # 完整登记官方广告目录的关键模型 (GPT/Claude/Gemini/DeepSeek/Grok/Kimi…)
+    ids = {m.split("|")[0] for m in models}
+    for expect in ("gpt-6-astra", "gpt-5.6-terra", "claude-opus-5",
+                   "claude-sonnet-4-6", "gemini-3.7-flash", "grok-4.6",
+                   "deepseek-v4-pro", "kimi-k3", "glm-5.3"):
+        assert expect in ids, f"目录缺模型: {expect}"
+    # 免费层模型带 |free 标注
+    free_ids = {m.split("|")[0] for m in models if "|free" in m}
+    for f in ("deepseek-v4-free", "nemotron-3-ultra-free",
+              "muse-spark-1.3-contributor-free"):
+        assert f in free_ids, f"免费模型应标注 free: {f}"
+    # 只注册了一次 (去重)
+    assert len(models) == len(ids)
 
 
 # ---------------------------------------------------------------- 密钥解析

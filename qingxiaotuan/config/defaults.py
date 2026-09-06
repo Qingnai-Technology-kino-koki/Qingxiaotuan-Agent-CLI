@@ -201,13 +201,13 @@ PRESET_PROFILES: Dict[str, Dict[str, Any]] = {
         "model": {
             "provider": "opencode-zen",
             "base_url": "https://opencode.ai/zen/v1",
-            "model": "deepseek-v4-flash-free",
+            "model": "deepseek-v4-free",   # 实测免费层目前仅此模型可用
             "api_key_env": "OPENCODE_ZEN_API_KEY",
             "temperature": 0.7,
             "max_tokens": 8192,
             "stream": True,
         },
-        "desc": "OpenCode Zen 免费层 (每日有限免费额度, 需注册获取 Key)",
+        "desc": "OpenCode Zen (AI SDK 网关, 需自行填写 API Key; 免费层实测仅 deepseek-v4-free 可用)",
     },
 }
 

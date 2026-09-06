@@ -103,7 +103,7 @@ def build_parser() -> argparse.ArgumentParser:
     parser.add_argument("--profile", default="default", help="使用指定 profile (~/.qingxiaotuan/profiles/<name>)")
     parser.add_argument("--patch", help="一次性配置覆盖文件 (dsh 风格, 整值替换)")
     parser.add_argument("--workspace", help="工作区目录 (默认当前目录)")
-    parser.add_argument("--model", help="临时覆盖模型名 (如 deepseek-v4-flash-free)")
+    parser.add_argument("--model", help="临时覆盖模型名 (如 deepseek-v4-free)")
     parser.add_argument("--effort", choices=["low", "medium", "high", "xhigh", "max"],
                         help="推理投入级别 (low/medium/high/xhigh/max)")
     parser.add_argument("--allowed-tools", dest="allowed_tools",

@@ -66,15 +66,15 @@ _A_CHINA_MAINSTREAM: List[ProviderPreset] = [
         recommended_models=["deepseek-chat", "deepseek-reasoner", "deepseek-v4-flash"],
         docs_url="https://platform.deepseek.com/api-docs",
     ),
-    # OpenCode Zen (可选, 免费层有次数限制)
+    # OpenCode Zen (AI SDK 网关, 需自行填写 API Key; 免费层实测仅 deepseek-v4-free 可用)
     ProviderPreset(
         name="opencode-zen",
         base_url="https://opencode.ai/zen/v1",
-        model="deepseek-v4-flash-free",
+        model="deepseek-v4-free",
         api_key_env="OPENCODE_ZEN_API_KEY",
-        desc="OpenCode Zen 免费层 (可选, 50次/天, 需自行注册获取 Key)",
+        desc="OpenCode Zen (AI SDK 网关, 需填写 API Key; 免费层实测仅 deepseek-v4-free 可用)",
         tier=2, free_tier=True, region="global", category="免费层",
-        recommended_models=["deepseek-v4-flash-free"],
+        recommended_models=["deepseek-v4-free"],
         docs_url="https://opencode.ai/zen",
     ),
     ProviderPreset(
