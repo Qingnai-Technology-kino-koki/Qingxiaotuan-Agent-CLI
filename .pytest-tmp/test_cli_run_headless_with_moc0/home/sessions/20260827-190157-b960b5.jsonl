@@ -1,7 +1,0 @@
-{"ts": 1787828517.258618, "type": "user", "message": {"role": "user", "content": "读 hello.txt"}}
-{"ts": 1787828519.934937, "type": "usage", "turn": 1, "delta": {"prompt_tokens": 10, "completion_tokens": 5, "prompt_cache_hit_tokens": 4, "prompt_cache_miss_tokens": 6}, "provider": "openai-compatible", "model": "mock", "cost_usd": 1.5e-05}
-{"ts": 1787828519.9491653, "type": "assistant", "message": {"role": "assistant", "content": "", "tool_calls": [{"id": "call_1", "function": {"name": "read_file", "arguments": "{\"path\": \"hello.txt\"}"}}]}}
-{"ts": 1787828519.9521646, "type": "tool_call", "name": "read_file", "arguments": "{\"path\": \"hello.txt\"}"}
-{"ts": 1787828519.9581654, "type": "tool", "message": {"role": "tool", "tool_call_id": "call_1", "name": "read_file", "content": "# E:\\Qingxiaotuan Agent CLI\\.pytest-tmp\\test_cli_run_headless_with_moc0\\ws\\hello.txt\nCLI 端到端"}, "name": "read_file", "content": "# E:\\Qingxiaotuan Agent CLI\\.pytest-tmp\\test_cli_run_headless_with_moc0\\ws\\hello.txt\nCLI 端到端"}
-{"ts": 1787828519.9796095, "type": "usage", "turn": 2, "delta": {"prompt_tokens": 10, "completion_tokens": 5, "prompt_cache_hit_tokens": 4, "prompt_cache_miss_tokens": 6}, "provider": "openai-compatible", "model": "mock", "cost_usd": 1.5e-05}
-{"ts": 1787828519.9796095, "type": "assistant", "message": {"role": "assistant", "content": "CLI 端到端测试通过", "tool_calls": []}}

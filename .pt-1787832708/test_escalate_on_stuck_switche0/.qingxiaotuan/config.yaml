@@ -1,3 +1,0 @@
-router:
-  plan_execute: true
-  stuck_threshold: 3

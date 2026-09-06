@@ -1,1 +1,0 @@
-{"id": "m0001", "ts": 1787828658.2070322, "tool": "write_file", "kind": "mutation", "summary": "", "targets": ["a.txt"], "snaps_meta": [{"rel": "a.txt", "snap": "E:\\Qingxiaotuan Agent CLI\\.pytest-tmp\\test_auto_rollback_on_handler_0\\.qxt\\ledger\\s1787828658192204400_0001_0.bin", "existed": true, "kind": "file"}]}

@@ -1,2 +1,0 @@
-{"seq": 1, "ts": 1787828507.2962384, "iso": "2026-08-27T11:01:47.296238+00:00", "type": "task.started", "payload": {"job_id": "j-1", "task": "build"}}
-{"seq": 2, "ts": 1787828507.3002362, "iso": "2026-08-27T11:01:47.300236+00:00", "type": "task.started", "payload": {"job_id": "j-2", "task": "deploy"}}

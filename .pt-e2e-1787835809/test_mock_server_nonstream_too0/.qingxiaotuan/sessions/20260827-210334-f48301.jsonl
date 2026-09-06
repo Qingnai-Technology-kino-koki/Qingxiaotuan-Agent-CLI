@@ -1,7 +1,0 @@
-{"ts": 1787835814.8077364, "type": "user", "message": {"role": "user", "content": "读一下 hello.txt"}}
-{"ts": 1787835817.9202392, "type": "usage", "turn": 1, "delta": {"prompt_tokens": 10, "completion_tokens": 5, "prompt_cache_hit_tokens": 4, "prompt_cache_miss_tokens": 6}, "provider": "deepseek", "model": "deepseek-chat", "cost_usd": 3e-06}
-{"ts": 1787835817.9252648, "type": "assistant", "message": {"role": "assistant", "content": "", "tool_calls": [{"id": "call_1", "function": {"name": "read_file", "arguments": "{\"path\": \"hello.txt\"}"}}]}}
-{"ts": 1787835817.9297695, "type": "tool_call", "name": "read_file", "arguments": "{\"path\": \"hello.txt\"}"}
-{"ts": 1787835817.9357805, "type": "tool", "message": {"role": "tool", "tool_call_id": "call_1", "name": "read_file", "content": "# E:\\Qingxiaotuan Agent CLI\\.pt-e2e-1787835809\\test_mock_server_nonstream_too0\\hello.txt\n你好, 青小团", "status": "ok"}, "name": "read_file", "content": "# E:\\Qingxiaotuan Agent CLI\\.pt-e2e-1787835809\\test_mock_server_nonstream_too0\\hello.txt\n你好, 青小团"}
-{"ts": 1787835817.9469051, "type": "usage", "turn": 2, "delta": {"prompt_tokens": 10, "completion_tokens": 5, "prompt_cache_hit_tokens": 4, "prompt_cache_miss_tokens": 6}, "provider": "deepseek", "model": "deepseek-chat", "cost_usd": 3e-06}
-{"ts": 1787835817.9489105, "type": "assistant", "message": {"role": "assistant", "content": "已读取文件内容: 你好, 青小团", "tool_calls": []}}

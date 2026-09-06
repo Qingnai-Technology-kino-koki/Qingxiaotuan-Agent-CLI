@@ -1,4 +1,0 @@
-{"ts": 1787835497.8102841, "type": "session.meta", "kind": "cron", "job_id": "094a07e0", "name": "坏任务", "prompt": "会崩", "started_at": 1787835497.8102841}
-{"ts": 1787835497.8163247, "type": "user", "role": "user", "content": "会崩"}
-{"ts": 1787835497.821366, "type": "job.error", "error": "RuntimeError: agent exploded"}
-{"ts": 1787835497.8599906, "type": "job.done", "job_id": "094a07e0", "ok": false, "session_file": "E:\\Qingxiaotuan Agent CLI\\.pt-list2-1787835438\\test_run_job_isolates_exceptio0\\sessions\\20260827-205817-e7dadb.jsonl"}

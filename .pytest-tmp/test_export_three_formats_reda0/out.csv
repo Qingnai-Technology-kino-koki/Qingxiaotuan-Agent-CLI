@@ -1,2 +1,0 @@
-seq,ts,iso,type,payload_json
-1,1787828507.408104,2026-08-27T11:01:47.408104+00:00,tool.executed,"{""name"": ""run_shell"", ""api_key"": ""***""}"

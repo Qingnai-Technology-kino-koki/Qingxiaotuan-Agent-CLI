@@ -1,5 +1,0 @@
-{"ts": 1787835314.431448, "type": "user", "message": {"role": "user", "content": "看看目录"}}
-{"ts": 1787835314.4407814, "type": "assistant", "message": {"role": "assistant", "content": "", "tool_calls": [{"id": "c1", "function": {"name": "list_dir", "arguments": "{}"}}]}}
-{"ts": 1787835314.4448016, "type": "tool_call", "name": "list_dir", "arguments": "{}"}
-{"ts": 1787835314.4561515, "type": "tool", "message": {"role": "tool", "tool_call_id": "c1", "name": "list_dir", "content": ".", "status": "ok"}, "name": "list_dir", "content": "."}
-{"ts": 1787835314.4638186, "type": "assistant", "message": {"role": "assistant", "content": "done", "tool_calls": []}}
