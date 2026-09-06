@@ -1,148 +1,151 @@
-# Qingxiaotuan CLI (青小团)
+# Qingxiaotuan Agent CLI (青小团)
 
-[![CI](https://github.com/Qingnai-Technology-kino-koki/Qingxiaotuan-Agent-CLI/actions/workflows/ci.yml/badge.svg)](https://github.com/Qingnai-Technology-kino-koki/Qingxiaotuan-Agent-CLI/actions/workflows/ci.yml)
-[![Python](https://img.shields.io/badge/python-3.11%20%7C%203.12%20%7C%203.13-blue)](https://www.python.org)
-[![License: MIT](https://img.shields.io/badge/license-MIT-green)](./LICENSE)
-[![PRs Welcome](https://img.shields.io/badge/PRs-welcome-brightgreen)](./CONTRIBUTING.md)
+> **«Model + Harness = Agent»** — separa o «pensar» do «rodar em segurança» e entrega as duas chaves pra você.
+> Um harness de agentes de IA em Python puro, seguro por padrão e agnóstico de modelo. `v0.2.014` · MIT · Python ≥ 3.10
 
-[English](README.md) | [简体中文](README_zh-CN.md) | [繁體中文](README_zh-TW.md) | [日本語](README_ja.md) | [한국어](README_ko.md) | [Español](README_es.md) | **Português (BR)** | [Français](README_fr.md) | [Deutsch](README_de.md) | [Русский](README_ru.md)
+**Idioma/Language:** [English](README.md) · [简体中文](README_zh-CN.md) · [繁體中文](README_zh-TW.md) · [日本語](README_ja.md) · [한국어](README_ko.md) · [Español](README_es.md) · **Português (Brasil)** · [Français](README_fr.md) · [Deutsch](README_de.md) · [Русский](README_ru.md)
 
-> Um CLI de agente construído em torno de uma única ideia: **conheça o raio de impacto antes que o agente toque em qualquer coisa.**
-> Todo comando de shell é analisado quanto a risco e classificado *antes* de ser executado — operações críticas são bloqueadas por padrão, e um mascote vivo mostra exatamente o estado em que o agente está.
+**Antes de mexer:** [SECURITY.md](SECURITY.md) · [CHANGELOG.md](CHANGELOG.md) · [ARCHITECTURE.md](ARCHITECTURE.md) · `qxt models list-providers`
 
-Python puro, zero compilação, neutro em relação a modelos. São 119 módulos e ~21 mil linhas de código-fonte respaldados por **591 testes offline** (incluindo testes ponta a ponta com mock server) em uma matriz de CI Python 3.11–3.13.
+---
 
-<!-- 📹 TODO(demo): inserir aqui uma gravação de terminal de 30 a 60 segundos mostrando:
-     qxt chat → task → transições do mascote → momento de interceptação pelo safety.
-     Até lá, a máquina de estados ASCII abaixo é a coisa real. -->
+## Em uma frase
 
-## O Mascote É a Barra de Status
+A maioria dos CLIs de agente nasce *casada com um fornecedor*. Esse aqui é o oposto: um **chassi sem cérebro fixo**. Troca entre 48 provedores na hora, roda 100 % offline, desfaz suas cagadas e te mostra o raio de impacto **antes** de o comando disparar. **O modelo pensa; ele cuida pra não explodir tudo.**
 
-Qingxiaotuan ("pequeno bolinho verde") não é um logotipo estático — é uma **máquina de estados com sinais vitais**, renderizada ao vivo no seu terminal para que você sempre saiba o que o agente está fazendo:
+**O que NÃO é**: nem um invólucro refém de um modelo (hot-swap / self-host / offline, você escolhe); nem um capacho de IDE (é ferramenta de terminal, e ainda dá pra dirigir por ACP via VSCode/Zed/JetBrains); nem uma abstração frágil de uma camada só (arquitetura de microkernel pra quem manja + um `setup` de um clique pro resto).
 
+---
+
+## Por que é diferente
+
+| O que entrega | Até onde vai |
+|---|---|
+| 🛡️ **Segurança em primeiro lugar** | Quatro portões: nota estática de risco, bloqueio por raio de impacto, piso de linhas vermelhas no YOLO e razão transacional com `/undo` de precisão |
+| 🔌 **Agnóstico de modelo** | 48 provedores + Ollama local + hot-swap + roteamento automático (`router.*`) |
+| 🧠 **Três loops principais** | ReAct / Planner-Execute / DevLoop — plugáveis: um kernel, vários «ritmos de pensamento» |
+| 🔧 **Microkernel** | `@plugin` de uma linha, registro de serviços, barramento de eventos append-only, middleware de hooks |
+| 🗂️ **Memória** | SQLite FTS5 + stream de eventos de sessão; memória em 3 níveis, `/undo`, checkpoint, replay, exportação de Trajectory |
+| 🧩 **Ecossistema** | MCP + ACP — encaixa ferramentas ou deixa seu IDE te pilotar |
+| 🌍 **Dez idiomas** | chinês simplificado por padrão, com localização de verdade da interface |
+| 🐍 **Python puro** | ~414 `.py` / ~77 k linhas / 32 pacotes / 15+ plugins, MIT |
+
+---
+
+## Sem rodeio
+
+**Q: Isso aí é «feito em casa» de verdade? Tem esqueleto no armário?**
+O kernel e a maior parte das capacidades (`kernel/`, `core/`, `acp/`, `tools/`, `ports/`) são implementados do zero em Python, alinhados a protocolos externos só pra interoperar. Tem **exatamente uma exceção proposital**: a casca do TUI `--tui` mantém de propósito o estilo e a paleta característicos do **Kimi Code** (`#4FA8FF`, o spinner de fases da lua, a barra de status de duas linhas) —«se o toque é bom, não reinvento». Essa é a *única* parte que usa cara alheia, e está creditada no [NOTICE](NOTICE). Todo o resto é sangue nosso.
+
+**Q: Por que me bloqueia antes de rodar comando?**
+É feature, não bug. Comando perigoso pede confirmação primeiro; o YOLO respeita as linhas vermelhas. Tá loco de chato? `qxt safe allow <cmd>` pra allowlist — não desligue a segurança.
+
+**Q: O que `/undo` desfaz de verdade?**
+Toda **escrita** que passa pela razão: um arquivo, um passo, um turno inteiro. Por dentro é razão transacional + diff `reverse_transform` + snapshots de checkpoint. Não é milagre, mas transforma «fiz merda» de perda garantida em salvamento provável.
+
+**Q: Ele vai ler meus arquivos privados?**
+O escopo das ferramentas é limitado por uma allow-list de domínios, a saída de rede é controlada pra evitar exfiltração e as chaves são mascaradas na saída.
+
+**Q: Total offline?**
+`qxt models local` pra sondar, `/offline` pra gerenciar o Ollama. Sem internet, sem problema.
+
+**Q: Dá pra escrever minhas próprias ferramentas/plugins?**
+Sim — metadata com `@plugin`, `activate(kernel)` + `kernel.provide(...)` / `kernel.require(...)`. Três passos:
+
+```python
+from ..core.kernel import Kernel, Plugin
+
+@plugin("my.tool", provides=["loop_registry"])
+class MyTool(Plugin):
+    def activate(self, kernel):
+        def _handler(ctx, query: str) -> str:
+            return f"echo: {query}"
+        kernel.provide("tools.my", _handler)
 ```
-  idle      thinking      working       alert        done
-  ( ◡ )     ? ⠋          ( • • )      ( @ • )      ✨
- ╭─────╮   ( ◠ ◠ )      ╭─────╮     ╭─────╮      ( ^ ^ )
- ╰─────╯   ╭─────╮      ╰─────╯     ╰─────╯      ╭─────╮
-           ╰─────╯       ▔▔▔▔▔        ⚠ BLOCKED    ╰─────╯
-  waiting  reasoning    tool call    intercepted   finished
-```
 
-| Estado | Quando | Visual |
-| --- | --- | --- |
-| `idle` | aguardando entrada | respiração calma |
-| `thinking` | raciocínio do modelo | balança + spinner |
-| `working` | executa uma chamada de ferramenta | flutua + anel de progresso |
-| `alert` | **guardrail do safety bloqueou** um comando perigoso | fica laranja e treme — controle de raio de impacto que você pode *ver* |
-| `done` | tarefa concluída | olhos em crescente + brilho |
+---
 
-## Por Que Este Projeto
-
-- **Raio de impacto mínimo por padrão** — antes de cada comando de shell ser executado, o motor `safety`, em Python puro, faz análise estática de risco; comandos `critical` (`rm -rf /`, `git push --force`, `DROP TABLE`) são **bloqueados antes da execução**, não apenas registrados depois.
-- **Movimentações de workspace reversíveis** — `/diff` para revisar alterações, `/undo` para reverter (com modo `--safe` incluído), sessões reproduzíveis graças a um fluxo de eventos append-only.
-- **10 motores de capacidade, todos em Python puro, zero IPC** — diff / crypto / index / ansi / safety / json / search / notify / rules / skill-market, conectados por meio de um registro com verificações de integridade (`qxt ext selftest`).
-- **Neutro em relação a modelos** — DeepSeek, Claude, Gemini ou modelos locais por trás de adaptadores compatíveis com OpenAI / Anthropic; troque a qualquer momento com `/model`. `/route` estima a dificuldade da tarefa e sugere um modelo (apenas consultivo).
-- **Enxame multiagente** — `/swarm` planeja com um modelo forte, executa subtarefas com modelos mais baratos em paralelo e, no fim, faz o modelo forte aceitar ou rejeitar o resultado.
-- **Ciclo de autoaprimoramento** — após cada execução, o refletidor diagnostica falhas (reconhece pytest/npm/git/cargo/dotnet) e destila guardrails, para que o mesmo erro seja detectado mais cedo da próxima vez.
-- **Memória que sobrevive a reinicializações** — três camadas (session / facts / skills) com recuperação full-text entre sessões via SQLite FTS5.
-
-## Início Rápido
-
-> Requer Python ≥ 3.11. Python puro — nada a compilar.
+## Começo rápido
 
 ```bash
-git clone https://github.com/Qingnai-Technology-kino-koki/Qingxiaotuan-Agent-CLI.git
-cd qingxiaotuan
-pip install -e .
+git clone <este repo> && cd qingxiaotuan-agent-cli
+python -m venv .venv && source .venv/bin/activate    # Windows: .venv\Scripts\activate
+pip install -e ".[dev]"
 
-qxt setup     # 30-second wizard: pick a provider, paste your API key
-qxt chat      # start talking
+qxt setup
+# ou na mão: ~/.qingxiaotuan/config.yaml
+#   model.provider: deepseek
+#   model.model: deepseek-chat
+#   model.api_key_env: DEEPSEEK_API_KEY      # chave nunca em texto puro
+
+qxt            # bora conversar
+qxt --print run "Oi, se apresenta em uma frase."
 ```
 
-Tarefas headless de execução única também funcionam:
+---
+
+## Superfície de comandos: 25 subcomandos + 36 comandos de barra
+
+| Comando | Pra quê |
+|---|---|
+| `qxt` | TUI interativo (skin Kimi Code) |
+| `qxt setup` / `qxt models` | Configurar provedor / listar 48 modelos |
+| `qxt agent` | Agentes nomeados (compatível `.claude/agents`, descoberta de 3 níveis) |
+| `qxt acp` | Sobe um server ACP pra VSCode / Zed / JetBrains te pilotar |
+| `qxt cron` | Tarefas agendadas em segundo plano |
+| `qxt doctor` / `qxt bench` | Checkup / benchmark |
+| `qxt arch demo` | Verifica a arquitetura de 5 camadas num comando |
+
+Barras que você vai viver: `/plan`·`/model`·`/undo`·`/impact`·`/swarm`·`/log`·`/stats`·`/cost`·`/budget`·`/goal`·`/sandbox`·`/offline`·`/verify`·`/audit`·`/more`·`/help` — lista completa com `Ctrl-G` no TUI.
+
+---
+
+## Três loops, a mesma mão firme
+
+- **ReActLoop** — pensa → age → observa, o ritmo padrão.
+- **PlannerExecuteLoop** — um modelo forte planeja, um barato executa (`router.*` permite compartimentar plano/execução). O economizador de tokens.
+- **DevLoop** — escreve-verifica-cura: `/verify` detecta o projeto (Python/Node/Rust/Go), infere os comandos de teste e se auto-cura por até N rodadas.
+
+## O modelo de segurança: quatro portões + desfazer com razão
+
+1. **Nota estática** — todo comando de shell pontuado `none→critical` por `safety_engine.score()`, com expansão de indiretas (IFS, `$VAR`, substituição, escapes ANSI-C/octal/hex, PowerShell Base64, NFKC; ≤32 de recursão).
+2. **Bloqueio por raio de impacto** — você vê o que ele vai tocar **antes** de disparar (`--impact`).
+3. **Piso de linhas vermelhas no YOLO** — YOLO tira as confirmações passo a passo mas **não** toca nas linhas vermelhas (`rm` recursivo, force-push, `chmod -R 000 /`… nunca em automático).
+4. **Razão transacional** — todo write fica auditado; `/undo` restaura com diff `reverse_transform` + snapshots.
+
+As regras sempre resolvem `deny > ask > allow`. Use `qxt safe allow <cmd>` pra allowlist; não desligue segurança pra economizar clique.
+
+---
+
+## Onde suas ideias rodam
+
+- **Memória** — três níveis (usuário/projeto/sessão) + SQLite FTS5 (trigram), degrada pra texto puro se não tiver.
+- **Subagentes** — delegação tipada (general-purpose / explore / plan / coder), subagentes isolados, workers concorrentes e Swarm pra fatiar tarefa longa.
+- **Cron e segundo plano** — `qxt cron start --detach`; autonomia headless.
+- **Hooks** — `PreToolUse` pode `block` ou reescrever `args` (`hooks.allow_edit_args`).
+- **Observabilidade** — `/stats`·`/audit`·`/impact`·`/bench`·`/cost`; custo na mesa.
+- **crypto** — v2 é sólido: AES-GCM(AEAD) com `cryptography`, senão cifra de fluxo HMAC-SHA256; `open()` com MAC ausente/adulterado sempre vai de fail-closed.
+
+---
+
+## Dev & contrato
 
 ```bash
-qxt run "refactor utils.py into two modules and keep tests green"
+python -m pytest tests/ -q        # 2000+ testes
+python -m mypy qingxiaotuan       # portão de tipos
+qxt --print run "Oi. Uma linha."  # smoke
 ```
 
-> **Nota sobre o crypto:** o motor `crypto` usa apenas a biblioteca padrão (derivação de chave PBKDF2-HMAC-SHA256 + cifra de fluxo SHA256-keystream + fingerprints SHA-256). A cifra de fluxo é um design leve, sem tags de autenticação — adequada para uso local à prova de violação, mas não é um primitivo de alta segurança.
+- **Disciplina i18n**: README_zh-CN é o mestre autoritativo; cada idioma é uma localização viva, sem deriva — **nada de tradução mecânica.**
+- **Escala**: ~414 `.py` / ~77 k linhas / 32 pacotes / 15+ plugins.
+- **Versão**: `v0.2.014` (0.x/Beta); mudanças que quebram avisam na minor + notas de migração.
+- **A fundo**: assinaturas dos nove motores e um tutorial de ferramenta nova moram no apêndice de `README_zh-CN.md`.
 
-## Comandos Slash
+---
 
-`/help` `/tools` `/skills` `/memory` `/usage` `/cost` `/context` `/compact` `/diff` `/undo` `/model` `/effort` `/mode` `/plan` `/resume` `/swarm` `/route` `/clear` `/more` `/exit`
+## License & links
 
-Destaques:
+- **License**: MIT (usa, modifica, redistribui; mantém o aviso)
+- **Lê isso**: [SECURITY.md](SECURITY.md) · [CHANGELOG.md](CHANGELOG.md) · [ARCHITECTURE.md](ARCHITECTURE.md) · [NOTICE](NOTICE)
 
-| Comando | O que faz |
-| --- | --- |
-| `/plan` | modo de análise somente leitura — ferramentas de mutação são interceptadas |
-| `/swarm` | colaboração multiagente (plano forte → execução barata em paralelo → aceite forte) |
-| `/route` | estimativa de dificuldade + sugestão de modelo (consultivo, sem troca automática) |
-| `/compact` | comprime o histórico antigo para recuperar o orçamento de contexto |
-| `/cost` | uso de tokens, taxa de acerto do cache, gasto estimado |
-| `/undo` | reversão rápida do workspace (`all` / `--safe` / por arquivo) |
-
-## Motores de Capacidade
-
-| Motor | O que oferece |
-| --- | --- |
-| `diff` | diff por linha/palavra + patch + mesclagem de 3 vias |
-| `crypto` | derivação PBKDF2-HMAC-SHA256 + cifra de fluxo SHA256-keystream + fingerprints |
-| `index` | índice incremental de símbolos FNV-1a |
-| `ansi` | análise / remoção / renderização de sequências de escape de terminal |
-| `safety` | guardrail de raio de impacto mínimo: pontuação de risco + raio de impacto + bloqueio |
-| `json` | RFC 6901 pointer / diff por caminho / deep merge |
-| `search` | busca recursiva por regex (ignora node_modules/.git) |
-| `notify` | notificações de desktop multiplataforma |
-| `rules` | validação de políticas YAML (expressões seguras sem eval) |
-| `skill-market` | registro de pacotes de skills: pull / publish / search |
-
-```bash
-qxt ext engines     # list engines actually available
-qxt ext selftest    # launch each engine, report health
-```
-
-## Arquitetura
-
-```
-qingxiaotuan/
-├── cli/          command layer (+ fullscreen TUI)
-├── core/         kernel & orchestration: kernel / agent / devloop / background / swarm
-├── config/       defaults / loader / plugin / validate
-├── ext/          10 pure-Python engines + registry
-├── models/       adapters: openai_compat / anthropic / provider_catalog / router
-├── memory/       store (SQLite FTS5) / sessions (append-only events)
-├── skills/       manager / plugin
-├── tools/        base / shell / filesystem / web / external / code / audit
-├── context/      indexer / manager
-├── cron/         scheduled jobs
-├── ui/           repl + fullscreen TUI (shared theme)
-└── resources/    bundled skill templates + SOUL.md identity
-```
-
-## Qualidade
-
-- **591 testes offline** — sem necessidade de rede, incluindo execuções ponta a ponta contra um mock server local compatível com OpenAI (loop de ferramentas do agente, streaming, worker em segundo plano, subprocesso `qxt` real).
-- **Matriz de CI**: Python 3.11 / 3.12 / 3.13.
-- Apenas cinco dependências de runtime: `openai`, `pyyaml`, `rich`, `prompt_toolkit`, `httpx`.
-
-## Roadmap
-
-- [ ] Roteamento automático de modelos (integrar `router.enabled` ao loop do agente; hoje `/route` é apenas consultivo)
-- [ ] Publicar no PyPI (`pip install qingxiaotuan`)
-- [ ] Registro público do skill-market
-
-## Contribuindo
-
-Issues e PRs são bem-vindos — veja [CONTRIBUTING.md](./CONTRIBUTING.md). As traduções deste README são coordenadas no próprio arquivo; corrija qualquer idioma via PR.
-
-## Licença e Créditos
-
-MIT — veja [LICENSE](./LICENSE).
-
-Apoiado sobre os ombros do open source; ideias absorvidas e reimplementadas do zero em Python:
-
-- **DeepSeek Harness (dsh)** — microkernel (estilo Cordis), tudo é plugin, configuração baseada em perfis, adaptação neutra a modelos, tarefas headless, fluxo de eventos de sessão append-only
-- **Hermes Agent** — memória em três camadas, ciclo de autoevolução de skills, identidade SOUL.md, recuperação entre sessões com SQLite FTS5, tarefas cron
-- **Claude Code** — interações fluidas de CLI, exibição ao vivo do status de pensamento/ferramentas, gerenciamento de contexto grande, slash commands interativos
+> Quer «experiência fechada, de caixa, casada com vendor»? Disso o mercado tá cheio. Quer **rodar com seus próprios modelos, manter o controle e conseguir voltar atrás quando der ruim**? As chaves tão aqui.

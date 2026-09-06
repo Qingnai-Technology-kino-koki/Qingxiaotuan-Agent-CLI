@@ -29,7 +29,7 @@ qingxiaotuan/
   tools/            内置工具 + 派发 (dispatch_tasks 并发子任务)
   memory/           三层记忆 (FTS5) + 会话事件流 (SessionStore)
   config/           四层组合配置 (默认 → 用户 → profile → patch)
-  ext/              10 个纯 Python 外部能力引擎 (diff/crypto/index/ansi/safety/json/search/notify/rules/skill_market) + 注册中心
+  ext/              9 个纯 Python 外部能力引擎 (diff/crypto/index/ansi/safety/json/search/notify/rules) + 注册中心（skill_market 仅为规划，未接入注册表）
   skills/           技能系统 (加载 / 蒸馏 / 技能市场)
   self_improve/     自我改进闭环 (执行后复盘 → 护栏下次分发前生效)
   cron/             定时任务 (持久化调度 + 常驻守护进程)

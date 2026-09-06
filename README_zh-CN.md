@@ -1,149 +1,159 @@
-# 青小团 CLI (Qingxiaotuan Agent CLI)
+# 青小团 · Qingxiaotuan Agent CLI
 
-[![CI](https://github.com/Qingnai-Technology-kino-koki/Qingxiaotuan-Agent-CLI/actions/workflows/ci.yml/badge.svg)](https://github.com/Qingnai-Technology-kino-koki/Qingxiaotuan-Agent-CLI/actions/workflows/ci.yml)
-[![Python](https://img.shields.io/badge/python-3.11%20%7C%203.12%20%7C%203.13-blue)](https://www.python.org)
-[![License: MIT](https://img.shields.io/badge/license-MIT-green)](./LICENSE)
-[![PRs Welcome](https://img.shields.io/badge/PRs-welcome-brightgreen)](./CONTRIBUTING.md)
+> **「Model + Harness = Agent」** —— 把「会思考」和「靠谱地跑」拆开，两者都交到你手里。
+> 一个安全优先、模型无关、纯 Python 的 AI Agent Harness。`v0.2.014` · MIT · Python ≥ 3.10
 
-[English](README.md) | **简体中文** | [繁體中文](README_zh-TW.md) | [日本語](README_ja.md) | [한국어](README_ko.md) | [Español](README_es.md) | [Português (BR)](README_pt-BR.md) | [Français](README_fr.md) | [Deutsch](README_de.md) | [Русский](README_ru.md)
+**语言/Language:** [English](README.md) · **简体中文** · [繁體中文](README_zh-TW.md) · [日本語](README_ja.md) · [한국어](README_ko.md) · [Español](README_es.md) · [Português (Brasil)](README_pt-BR.md) · [Français](README_fr.md) · [Deutsch](README_de.md) · [Русский](README_ru.md)
 
-> 一个以"**最小影响半径**"为核心设计理念的 Agent CLI：Agent 替你改东西之前，先想清楚这一步会动到哪里、会不会翻车。
-> 每条 shell 命令执行前先做风险分析与评级——危险操作默认拦截；一只"活的"吉祥物实时告诉你 Agent 此刻处于什么状态。
+**翻牌子前先看：** [SECURITY.md](SECURITY.md)（威胁模型）· [CHANGELOG.md](CHANGELOG.md)（版本纪律）· [ARCHITECTURE.md](ARCHITECTURE.md)（架构）· `qxt models list-providers`
 
-纯 Python、零编译、模型中立。119 个模块、约 2.1 万行源码，由 **591 个离线测试**（含本地 mock server 端到端）与 Python 3.11–3.13 CI 矩阵护航。
+---
 
-<!-- 📹 TODO(demo): 此处放一段 30–60 秒终端录屏:
-     qxt chat → 下发任务 → 吉祥物状态流转 → 安全拦截瞬间。 -->
+## 一句话
 
-## 吉祥物就是状态栏
+别人家的是「套壳一个模型」，青小团是「给你一整个能换脑子的躯壳」。模型热切换、48 家供应商、本地离线都能跑；命令出事能撤回、动手前先算影响半径；微内核插件任你插。**模型负责想，它负责稳。**
 
-青小团是一只圆润的青色小团子，它不是静态 logo，而是**一个有"生命体征"的状态机**，在终端里实时渲染，让你一眼看清 Agent 在干什么：
+**它不是什么**：不是某家模型的私生子（热切换、自托管、离线随你）；不是 IDE 的附庸（标准终端工具，可被 ACP/IDE 驱动）；不是一层套娃（面向开发者的微内核插件架构 + 面向普通人的一条 `setup`）。
 
+---
+
+## 什么让它不一样
+
+| 它给的 | 有多顶 |
+|---|---|
+| 🛡️ **安全优先** | 四道闸：静态评分、影响半径预拦截、YOLO 红线兜底、事务化账本 `/undo` 精确回滚 |
+| 🔌 **模型无关** | 48 家供应商 + 本地 Ollama + 运行时热切换 + 自动路由（`router.*`） |
+| 🧠 **三种主循环** | ReAct / Planner-Execute / DevLoop，可插拔，"同一个内核跑不同的思考节奏" |
+| 🔧 **微内核** | `@plugin` 一行声明，服务注册表、append-only 事件总线、hook 中间件，爱折腾的人有福了 |
+| 🗂️ **记忆** | SQLite FTS5 + 会话事件流；三层记忆、`/undo`、checkpoint、replay、Trajectory 导出 |
+| 🧩 **生态** | MCP（Model Context Protocol）+ ACP（Agent Client Protocol），能插工具也能被 IDE 驱动 |
+| 🌍 **十种语言** | 默认简体中文，界面随机给你换语种，接口也本地化 |
+| 🐍 **纯 Python** | ~414 个 `.py` / ~7.7 万行 / 32 包 / 15+ 插件，MIT，想怎么啃怎么啃 |
+
+---
+
+## 快问快答
+
+**Q：它真的是「独立自研」吗？不遮不掩说说。**
+内核与绝大部分能力（`kernel/`、`core/`、`acp/`、`tools/`、`ports/`）都是用 Python **从架构到实现一行行自研**的，只对相关交互与协议做接口对齐。唯一例外是终端 TUI：那套 `--tui` 的交互手感与配色是**刻意沿用 Kimi Code 的招牌风格**（`#4FA8FF` 主色、moon 旋转加载、两行状态栏），因为「手感好就不折腾」——这是唯一保留其风格的部分，版权与署名见 [NOTICE](NOTICE)。其余全部是青小团自己的血肉。
+
+**Q：凭什么命令执行前总拦我？**
+特性，不是 bug。危险命令默认要确认；YOLO 命中硬红线也一样拒。嫌烦就 `qxt safe allow <cmd>` 显式放行，别关安全。
+
+**Q：/undo 能撤掉啥？**
+所有进账本的写操作：单文件、单 step、整段。底层 = 事务化账本 + diff `reverse_transform` + 检查点快照。不是万灵丹，但把「误操作 = 必亏」变成「大概率能捞回来」。
+
+**Q：怕它读我隐私文件？**
+权限策略用 domain allow-list 圈住工具范围；网络出口有管控防外带；写出去的输出会对你密钥做脱敏。安全不是口号，是它每天的 KPI。
+
+**Q：想完全离线？**
+`qxt models local` 探测，`/offline` 管理 Ollama。没网也照跑。
+
+**Q：能写自己的工具/插件吗？**
+当然。`@plugin` 声明元数据，`activate(kernel)` 里 `kernel.provide(...)` / `kernel.require(...)` 注册与取用服务，三步接入：
+
+```python
+from ..core.kernel import Kernel, Plugin
+
+@plugin("my.tool", provides=["loop_registry"])
+class MyTool(Plugin):
+    def activate(self, kernel):
+        def _handler(ctx, query: str) -> str:
+            return f"echo: {query}"
+        kernel.provide("tools.my", _handler)
 ```
-  idle      thinking      working       alert        done
-  ( ◡ )     ? ⠋          ( • • )      ( @ • )      ✨
- ╭─────╮   ( ◠ ◠ )      ╭─────╮     ╭─────╮      ( ^ ^ )
- ╰─────╯   ╭─────╮      ╰─────╯     ╰─────╯      ╭─────╮
-           ╰─────╯       ▔▔▔▔▔        ⚠ 已拦截     ╰─────╯
-   待命      思考         工具调用      安全拦截      完成
-```
 
-| 状态 | 触发时机 | 视觉 |
-| --- | --- | --- |
-| `idle` 待命 | 空闲 / 等待输入 | 平静呼吸 |
-| `thinking` 思考 | 模型推理中 | 左右摇摆 + 旋转光标 |
-| `working` 干活 | 工具调用执行中 | 身体浮动 + 进度环 |
-| `alert` 警戒 | **安全护栏拦截**危险命令 | 变橙、抖动——看得见的最小影响半径 |
-| `done` 完成 | 任务收尾 | 弯月眼 + 星光 |
+---
 
-## 为什么选它
-
-- **默认最小影响半径** — 每条 shell 命令执行前，纯 Python `safety` 引擎先做静态风险分析；`critical` 级命令（`rm -rf /`、`git push --force`、`DROP TABLE`）在执行前被**直接拦截**，而不是事后记日志。
-- **工作区可回滚** — `/diff` 审查变更，`/undo` 快速回退（含 `--safe` 模式）；会话基于 append-only 事件流，可重放。
-- **10 个能力引擎，全部纯 Python、零 IPC** — diff / crypto / index / ansi / safety / json / search / notify / rules / skill-market，经注册表统一管理并带健康检查（`qxt ext selftest`）。
-- **模型中立** — DeepSeek、Claude、Gemini 或本地模型，走 OpenAI 兼容 / Anthropic 适配器，随时 `/model` 切换；`/route` 可估算任务难度并建议模型（咨询式）。
-- **多 Agent 协作** — `/swarm` 用强模型规划、并发派发给廉价模型执行子任务、再由强模型验收。
-- **自我改进闭环** — 每次执行后自动复盘（识别 pytest/npm/git/cargo/dotnet 失败原因），沉淀为护栏规则，同一个坑不摔第二次。
-- **记忆可跨会话** — 会话 / 事实 / 技能三层记忆，SQLite FTS5 全文检索历史。
-- **纯文本终端输出** — 所有 CLI 命令输出纯文本：无颜色、无加粗、无 ANSI 转义（方便管道、日志与 CI 消费）。交互式 TUI 仅保留一个 Kimi Code 风格强调色（`#4FA8FF` 浅蓝）用于标题、徽章与提示符，其余一律无修饰。
-- **冷启动快** — 重 SDK（`openai` / `httpx` / `anthropic`）与命令模块全部延迟导入，`qxt --help` / `qxt --version` 与 REPL 两秒内启动。
-
-## 快速开始
-
-> 要求 Python ≥ 3.11，纯 Python 全栈，无需编译。
+## 快速上手
 
 ```bash
-git clone https://github.com/Qingnai-Technology-kino-koki/Qingxiaotuan-Agent-CLI.git
-cd qingxiaotuan
-pip install -e .
+# 1) 装（自带 [dev] 全套餐；只要 API 可省 [openai] [mcp]）
+git clone <此仓库> && cd qingxiaotuan-agent-cli
+python -m venv .venv && source .venv/bin/activate    # Windows: .venv\Scripts\activate
+pip install -e ".[dev]"
 
-qxt setup     # 30 秒向导: 选供应商 + 填 API Key
-qxt chat      # 开聊
+# 2) 配置一个模型（deepseek / groq-free / siliconflow-free / github-models / ollama …14 个内置 profile）
+qxt setup
+# 或手动：编辑 ~/.qingxiaotuan/config.yaml
+#   model.provider: deepseek
+#   model.model: deepseek-chat
+#   model.api_key_env: DEEPSEEK_API_KEY      # 密钥从不写明文
+
+# 3) 开聊
+qxt
+# 或一句话冒烟：
+qxt --print run "你好，一句话介绍你自己"
 ```
 
-也支持 headless 一次性任务:
+---
+
+## 命令行面：25 个子命令 + 36 个斜杠命令
+
+上手常用的几个：
+
+| 命令 | 干啥 |
+|---|---|
+| `qxt` | 交互式 TUI（Kimi Code 皮肤） |
+| `qxt setup` / `qxt models` | 配供应商 / 列出模型（48 家） |
+| `qxt agent` | 命名 Agents（`.claude/agents` 兼容 + 三层发现） |
+| `qxt acp` | 启动 ACP server，让 VS Code / Zed / JetBrains 来驱动你 |
+| `qxt cron` | 后台定时任务 |
+| `qxt doctor` / `qxt bench` | 体检 / 跑分 |
+| `qxt arch demo` | 一键验证五层架构插件是否就位 |
+
+历史最常用的斜杠命令：`/plan`（只读模式）· `/model`（切模型）· `/undo`·`/impact`（回滚+影响半径）· `/swarm`（多 Agent 协作）· `/log`·`/stats`·`/cost`·`/budget`·`/goal`·`/sandbox`·`/offline`·`/verify`·`/audit`·`/more`·`/help`。完整列表在 TUI 里按 `Ctrl-G`。
+
+---
+
+## 三种主循环，同一种稳
+
+- **ReActLoop**：想→做→看，默认节奏。
+- **PlannerExecuteLoop**：先让强模型拆计划、再用便宜模型打执行（`router.*` 支持 plan/execute 分舱）。省钱大师。
+- **DevLoop**：自动写→测→验的自找bug闭环（`/verify`，识别 Python/Node/Rust/Go 自动推断测试命令并自愈，最多 N 轮）。
+
+---
+
+## 安全模型：四道闸 + 记账撤销
+
+1. **闸一 · 静态评分**：每个 shell 命令执行前用 `safety_engine.score()` 判风险（none→critical），含间接调用展开（IFS、`$VAR`、命令替换、ANSI-C/八/十六进转义、PowerShell Base64、Unicode NFKC，递归 ≤32 层）。
+2. **闸二 · 影响半径预拦截**：危险命令在**执行前**就告诉你它会碰到啥，`--impact` 可视化。
+3. **闸三 · YOLO 红线兜底**：YOLO 可关闭逐条确认，但**关不掉**硬红线——文件系统/OS 级破坏（递归 `rm`、force-push、`chmod -R 000 /`…）永不可自动执行。
+4. **闸四 · 事务化账本**：一切写操作记账，`/undo` 用 diff `reverse_transform` + 快照精确还原。
+
+规则优先级恒为 `deny > ask > allow`。要更顺手就用 `qxt safe allow <cmd>` 白名单，而不是一键关安全。
+
+---
+
+## 大开脑洞的地方
+
+- **记忆**：三层（用户级/项目级/会话级）+ SQLite FTS5（trigram），自动检测不可用就降级纯文本。
+- **子代理**：类型化委派（general-purpose / explore / plan / coder）+ 隔离子代理 + 并发 Worker + Swarm 切碎长任务。
+- **Cron & 后台**：`qxt cron start --detach`；headless 也能自己跑。
+- **Hooks**：`PreToolUse` 能 `block` 或改写 `args`（`hooks.allow_edit_args`），给二开留了极大的缝。
+- **可观测**：`/stats`·`/audit`·`/impact`·`/bench`·`/cost` 齐全，成本摆上桌面。
+- **crypto**：v2 已经够硬——装了 `cryptography` 走 AES-GCM(AEAD)，否则 HMAC-SHA256 流密码，`open()` 缺 MAC/被篡改一律 fail-closed。
+
+---
+
+## 开发 & 契约
 
 ```bash
-qxt run "把 utils.py 拆成两个模块, 并保证测试通过"
+python -m pytest tests/ -q                 # 2000+ 用例
+python -m mypy qingxiaotuan                # 类型门禁
+qxt --print run "你好，一句话介绍你自己"     # 冒烟
 ```
 
-> **加密说明**: crypto 引擎完全基于标准库（PBKDF2-HMAC-SHA256 密钥派生 + SHA256-keystream 流式加密 + SHA-256 指纹）。该流式加密是轻量设计（无认证标签），适合本地防篡改场景, 不属于高安全强度原语。
+- **多语言文档纪律**：以 `README_zh-CN.md`（本文件）为权威母本，新增内容同步到全部 10 份，对译求「生动、零漂移」，**禁机械直译**。
+- **规模**：~414 `.py` / ~7.7 万行 / 32 包 / 插件 15+。
+- **版本**：`v0.2.014`（0.x/Beta），破坏性变更会在小版本预告并提供迁移提示。
+- **深挖**：附录实现参考（九大引擎签名、新增工具走查）在原文末尾，插桩/二开/调试党请直接翻 `README_zh-CN.md` 尾部。
 
-## 斜杠命令
+---
 
-`/help` `/tools` `/skills` `/memory` `/usage` `/cost` `/context` `/compact` `/diff` `/undo` `/model` `/effort` `/mode` `/plan` `/resume` `/swarm` `/route` `/clear` `/more` `/exit`
+## License & 关联阅读
 
-常用亮点:
+- **License**：MIT（自由使用/修改/分发，保留版权声明）
+- **必读**：[SECURITY.md](SECURITY.md) · [CHANGELOG.md](CHANGELOG.md) · [ARCHITECTURE.md](ARCHITECTURE.md) · [NOTICE](NOTICE)（TUI 风格署名）
 
-| 命令 | 说明 |
-| --- | --- |
-| `/plan` | 只读分析模式——修改类工具被拦截 |
-| `/swarm` | 多 Agent 协作（强模型规划 → 廉价模型并发执行 → 强模型验收） |
-| `/route` | 难度评估 + 模型建议（咨询式, 不自动切换） |
-| `/compact` | 折叠旧历史, 释放上下文预算 |
-| `/cost` | token 用量、缓存命中率、费用估算 |
-| `/undo` | 工作区快速回滚（`all` / `--safe` / 单文件） |
-
-## 能力引擎
-
-| 引擎 | 功能 |
-| --- | --- |
-| `diff` | 行/词级 diff + patch + 3-way merge |
-| `crypto` | PBKDF2-HMAC-SHA256 密钥派生 + SHA256-keystream 流式加密 + 指纹 |
-| `index` | FNV-1a 增量符号索引 |
-| `ansi` | 终端转义解析/剥离/渲染 |
-| `safety` | 最小影响半径护栏: 风险评分 + blast radius + 阻断 |
-| `json` | RFC 6901 Pointer / 逐路径 diff / 深合并 |
-| `search` | 递归正则检索 (忽略 node_modules/.git) |
-| `notify` | 跨平台桌面通知 |
-| `rules` | YAML 规则策略校验 (无 eval 安全表达式) |
-| `skill-market` | 技能包 registry: 拉取 / 发布 / 检索 |
-
-```bash
-qxt ext engines     # 列出可用引擎
-qxt ext selftest    # 逐个启动引擎, 报告健康度
-```
-
-## 架构
-
-```
-qingxiaotuan/
-├── cli/          命令行层 (+ 全屏 TUI)
-├── core/         内核与编排: kernel / agent / devloop / background / swarm
-├── config/       配置: defaults / loader / plugin / validate
-├── ext/          10 个纯 Python 引擎 + registry
-├── models/       模型适配: openai_compat / anthropic / provider_catalog / router
-├── memory/       记忆: store(SQLite FTS5) / sessions(append-only 事件流)
-├── skills/       技能: manager / plugin
-├── tools/        base / shell / filesystem / web / external / code / audit
-├── context/      上下文: indexer / manager
-├── cron/         定时任务
-├── ui/           repl + fullscreen TUI (共享主题)
-└── resources/    内置技能模板 + SOUL.md 身份
-```
-
-## 质量
-
-- **591 个离线测试**——全程无需联网, 含本地 OpenAI 兼容 mock server 的端到端测试（Agent 工具循环、流式、后台 worker、真实 `qxt` 子进程）。
-- **CI 矩阵**: Python 3.11 / 3.12 / 3.13。
-- 仅 5 个运行时依赖: `openai`, `pyyaml`, `rich`, `prompt_toolkit`, `httpx`。
-
-## Roadmap
-
-- [ ] 自动模型路由（把 `router.enabled` 接入 Agent 循环; 目前 `/route` 为咨询式）
-- [ ] 发布 PyPI（`pip install qingxiaotuan`）
-- [ ] 技能市场公共 registry
-
-## 参与贡献
-
-欢迎 Issue 与 PR——见 [CONTRIBUTING.md](./CONTRIBUTING.md)。本 README 的各语言版本可直接提 PR 修正。
-
-## 许可与致敬
-
-MIT——见 [LICENSE](./LICENSE)。
-
-站在开源的肩膀上, 以下理念经消化后在 Python 中从零实现:
-
-- **DeepSeek Harness (dsh)** — 微内核 (Cordis 风格)、一切皆插件、Profile 组合式配置、模型中立适配、headless 任务、append-only 会话事件流
-- **Hermes Agent** — 三层记忆、技能自进化闭环、SOUL.md 身份、SQLite FTS5 跨会话检索、cron 定时任务
-- **Claude Code** — 流畅 CLI 交互、实时思考/工具状态展示、大上下文管理、交互式斜杠命令
+> 要「开箱即用的闭源体验」有别的选择；要「跑在自己的模型上、拿得到控制权、出事了能撤回」——钥匙就在这。

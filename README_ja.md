@@ -1,148 +1,151 @@
-# Qingxiaotuan CLI (青小团)
+# 青小团 / Qingxiaotuan Agent CLI
 
-[![CI](https://github.com/Qingnai-Technology-kino-koki/Qingxiaotuan-Agent-CLI/actions/workflows/ci.yml/badge.svg)](https://github.com/Qingnai-Technology-kino-koki/Qingxiaotuan-Agent-CLI/actions/workflows/ci.yml)
-[![Python](https://img.shields.io/badge/python-3.11%20%7C%203.12%20%7C%203.13-blue)](https://www.python.org)
-[![License: MIT](https://img.shields.io/badge/license-MIT-green)](./LICENSE)
-[![PRs Welcome](https://img.shields.io/badge/PRs-welcome-brightgreen)](./CONTRIBUTING.md)
+> **「Model + Harness = Agent」** —— 「考えること」と「安全に走らせること」を分離して、両方の鍵をあなたに。
+> 安全第一・モデル非依存・純 Python の AI Agent Harness。`v0.2.014` · MIT · Python ≥ 3.10
 
-[English](README.md) | [简体中文](README_zh-CN.md) | [繁體中文](README_zh-TW.md) | **日本語** | [한국어](README_ko.md) | [Español](README_es.md) | [Português (BR)](README_pt-BR.md) | [Français](README_fr.md) | [Deutsch](README_de.md) | [Русский](README_ru.md)
+**言語/Language:** [English](README.md) · [简体中文](README_zh-CN.md) · [繁體中文](README_zh-TW.md) · **日本語** · [한국어](README_ko.md) · [Español](README_es.md) · [Português (Brasil)](README_pt-BR.md) · [Français](README_fr.md) · [Deutsch](README_de.md) · [Русский](README_ru.md)
 
-> 一つの考え方を軸に構築されたエージェント CLI:**エージェントが何かに触れる前に、その影響範囲（blast radius）を把握する。**
-> すべてのシェルコマンドは実行*前*にリスク分析と重要度評価が行われます。重大な操作はデフォルトでブロックされ、生きているマスコットがエージェントの現在状態を正確に表示します。
+**手に取る前に：** [SECURITY.md](SECURITY.md)（脅威モデル）· [CHANGELOG.md](CHANGELOG.md)（バージョン規律）· [ARCHITECTURE.md](ARCHITECTURE.md)（アーキテクチャ）· `qxt models list-providers`
 
-Pure Python・コンパイル不要・モデルニュートラル。119 モジュール、約 21k 行のソースコードを、Python 3.11–3.13 の CI マトリクス上で動く **591 件のオフラインテスト**（モックサーバーによる E2E テストを含む）が支えています。
+---
 
-<!-- 📹 TODO(demo): ここに 30〜60 秒のターミナル録画を配置してください。
-     内容: qxt chat → タスク実行 → マスコットの状態遷移 → safety が介入する瞬間。
-     それまでの間、下の ASCII 状態マシンこそが本物です。 -->
+## ひとことで
 
-## マスコットはステータスバー
+他社は「モデルに殻を被せる」。青小团は違う——**脳みそ換え放題のボディ**を渡します。48 社のプロバイダをホットスワップ、完全オフライン動作、やらかした操作は巻き戻せて、実行する**前**に影響範囲を見せてくれます。**考えるのがモデル、それを支えるのがこいつ。**
 
-Qingxiaotuan（「小さな緑のお団子」の意）は静的なロゴではありません。**バイタルサインを持つステートマシン**であり、ターミナル内にリアルタイムで描画されるため、エージェントが今何をしているのかを常に把握できます：
+**これは何でもない**：特定モデルの囲い込みではない（ホットスワップ・自前ホスト・オフライン、自由自在）；IDE の付属物ではない（標準ターミナルツール、ACP 経由で VSCode/Zed/JetBrains に駆動される）；一重の頼りない抽象でもない（開発者向けマイクロカーネル + 一般ユーザー向け一発 `setup`）。
 
+---
+
+## なにが違うのか
+
+| こいつ | どこまでやる |
+|---|---|
+| 🛡️ **安全第一** | 四重ゲート：静的リスク判定、影響範囲の事前ブロック、YOLO レッドライン、トランザクション台帳の精密 `/undo` |
+| 🔌 **モデル非依存** | 48 プロバイダ + ローカル Ollama + ホットスワップ + 自動ルーティング（`router.*`） |
+| 🧠 **三つのメインループ** | ReAct / Planner-Execute / DevLoop を差し替え可能。一つのカーネル、複数の「思考リズム」 |
+| 🔧 **マイクロカーネル** | 一行 `@plugin`、サービスレジストリ、追記専用イベントバス、hook ミドルウェア |
+| 🗂️ **メモリ** | SQLite FTS5 + セッションイベントストリーム；3 層メモリ、`/undo`、checkpoint、replay、Trajectory 出力 |
+| 🧩 **エコシステム** | MCP + ACP — ツールを刺すも良し、IDE に駆動されるも良し |
+| 🌍 **10 言語** | デフォルトは翻訳品質込みの日本語UIにも対応、機能ごとローカライズ |
+| 🐍 **純 Python** | 約 414 `.py` / 約 7.7 万行 / 32 パッケージ / 15+ プラグイン、MIT |
+
+---
+
+## ぶっちゃけ
+
+**Q: これって本当に「独立自研」？隠し事ない？**
+カーネルと大半の機能（`kernel/`、`core/`、`acp/`、`tools/`、`ports/`）は Python で**アーキテクチャから一行ずつ自前実装**で、外部プロトコルとの相互運用のためだけにインターフェースを合わせています。唯一わざと残した例外が一つ：`--tui` のターミナル UI は**Kimi Code の看板スタイル**（`#4FA8FF` 基調、ムーンフェイズのスピナー、二行ステータスバー）を意図的に踏襲——「手触りがいいなら再発明しない」。この部分だけ他人の皮をかぶっていて、クレジットは [NOTICE](NOTICE)。それ以外は全部、青小团の血肉です。
+
+**Q: なんでコマンドの前に止まるの？**
+仕様、バグじゃない。危険なコマンドは確認を求める；YOLO でもレッドラインは硬く守る。煩わしければ `qxt safe allow <cmd>` で許可リスト化——安全を無効化するんじゃなく。
+
+**Q: `/undo` で実際どこまで戻せる？**
+台帳に載る**書き込み**全部：単一ファイル、単一 step、ターン全体。中身はトランザクション台帳 + diff `reverse_transform` + checkpoint スナップショット。万能じゃないけど、「やらかした → 確実に損」を「多分取り返せる」に変える。
+
+**Q: プライベートファイル読まれない？**
+権限ポリシーは domain allow-list でツール範囲を制限；外部送信は防がれ、出力の秘密鍵はマスク。
+
+**Q: 完全オフラインは？**
+`qxt models local` で検出、`/offline` で Ollama 管理。ネットなしでも動く。
+
+**Q: 自前のツール / プラグイン書ける？**
+もちろん。`@plugin` でメタデータ宣言、`activate(kernel)` で `kernel.provide(...)` / `kernel.require(...)`。3 ステップ：
+
+```python
+from ..core.kernel import Kernel, Plugin
+
+@plugin("my.tool", provides=["loop_registry"])
+class MyTool(Plugin):
+    def activate(self, kernel):
+        def _handler(ctx, query: str) -> str:
+            return f"echo: {query}"
+        kernel.provide("tools.my", _handler)
 ```
-  idle      thinking      working       alert        done
-  ( ◡ )     ? ⠋          ( • • )      ( @ • )      ✨
- ╭─────╮   ( ◠ ◠ )      ╭─────╮     ╭─────╮      ( ^ ^ )
- ╰─────╯   ╭─────╮      ╰─────╯     ╰─────╯      ╭─────╮
-           ╰─────╯       ▔▔▔▔▔        ⚠ BLOCKED    ╰─────╯
-  waiting  reasoning    tool call    intercepted   finished
-```
 
-| 状態 | 状況 | 見た目 |
-| --- | --- | --- |
-| `idle` | 入力待ち | 落ち着いた呼吸 |
-| `thinking` | モデルが推論中 | 揺れ＋スピナー |
-| `working` | ツール呼び出しを実行中 | 浮遊＋プログレスリング |
-| `alert` | 危険なコマンドを **safety ガードレールがブロック** | オレンジ色に変わって震える — *見てわかる*影響範囲（blast radius）制御 |
-| `done` | タスク完了 | 三日月型の目＋キラキラ |
-
-## なぜこの CLI なのか
-
-- **デフォルトで最小の影響範囲（Minimum Blast Radius）** — すべてのシェルコマンドは実行前に、純 Python 製の `safety` エンジンが静的リスク分析を行います。`critical` に分類されたコマンド（`rm -rf /`、`git push --force`、`DROP TABLE`）は、実行後に記録されるだけでなく**実行前にブロック**されます。
-- **可逆的なワークスペース操作** — `/diff` で変更内容を確認、`/undo` でロールバック（`--safe` モード付き）。セッションは追記専用（append-only）のイベントストリームから再生できます。
-- **10 のケイパビリティエンジン、すべて純 Python、IPC ゼロ** — diff / crypto / index / ansi / safety / json / search / notify / rules / skill-market を、ヘルスチェック付きのレジストリで接続（`qxt ext selftest`）。
-- **モデルニュートラル** — OpenAI 互換 / Anthropic アダプター経由で DeepSeek、Claude、Gemini、ローカルモデルを利用可能。`/model` でいつでも切り替えられます。`/route` はタスク難易度を見積もり、モデルを提案します（アドバイザリ）。
-- **マルチエージェントスウォーム** — `/swarm` は強力なモデルで計画し、安価なモデルでサブタスクを並列実行した後、強力なモデルに結果の承認／却下を判定させます。
-- **自己改善ループ** — 各実行後、リフレクターが失敗を診断し（pytest/npm/git/cargo/dotnet を認識）、ガードレールとして蒸留します。同じ失敗は次回、より早い段階で捕捉されます。
-- **再起動を超えて残るメモリ** — session / facts / skills の 3 層構成。SQLite FTS5 による全文検索で、セッションをまたいで想起できます。
+---
 
 ## クイックスタート
 
-> Python 3.11 以上が必要です。純 Python 製 — コンパイルするものは何もありません。
+```bash
+git clone <このリポジトリ> && cd qingxiaotuan-agent-cli
+python -m venv .venv && source .venv/bin/activate    # Windows: .venv\Scripts\activate
+pip install -e ".[dev]"
+
+qxt setup
+# 手動でも：~/.qingxiaotuan/config.yaml
+#   model.provider: deepseek
+#   model.model: deepseek-chat
+#   model.api_key_env: DEEPSEEK_API_KEY      # 鍵を平文で書かない
+
+qxt            # 会話開始
+qxt --print run "こんにちは、あなたを一言で自己紹介して"
+```
+
+---
+
+## コマンド面：25 サブコマンド + 36 スラッシュコマンド
+
+| コマンド | 用途 |
+|---|---|
+| `qxt` | 対話型 TUI（Kimi Code スキン） |
+| `qxt setup` / `qxt models` | プロバイダ設定 / 48 モデル一覧 |
+| `qxt agent` | 名前付きエージェント（`.claude/agents` 互換、3 層ディスカバリ） |
+| `qxt acp` | ACP server 起動、VSCode / Zed / JetBrains に駆動される |
+| `qxt cron` | 定期バックグラウンドタスク |
+| `qxt doctor` / `qxt bench` | 健康診断 / ベンチ |
+| `qxt arch demo` | 5 層アーキテクチャを一発検証 |
+
+よく使うスラッシュコマンド：`/plan` · `/model` · `/undo`·`/impact` · `/swarm` · `/log`·`/stats`·`/cost`·`/budget`·`/goal`·`/sandbox`·`/offline`·`/verify`·`/audit`·`/more`·`/help` — 全一覧は TUI で `Ctrl-G`。
+
+---
+
+## 三つのメインループ、変わらぬ安定
+
+- **ReActLoop**：考え→動く→確認、デフォルトのリズム。
+- **PlannerExecuteLoop**：強いモデルが計画、安いモデルが実行（`router.*` で compartmentalize 対応）。トークン節約家。
+- **DevLoop**：書いて→検証して→自癒。`/verify` がプロジェクト種別（Python/Node/Rust/Go）を自動判定し、テストコマンドを推測して最大 N ラウンド自修。
+
+## 安全モデル：四重ゲート + 台帳式取り消し
+
+1. **静的スコアリング** — 全シェルコマンドを `safety_engine.score()` で `none→critical` 判定、間接入力展開に対応（IFS、`$VAR`、コマンド置換、ANSI-C/8進/16進エスケープ、PowerShell Base64、NFKC；再帰 ≤32）。
+2. **影響範囲の事前ブロック** — 実行**前**に触る範囲を見せる（`--impact`）。
+3. **YOLO レッドラインの床** — YOLO は逐次確認を消せるが、ハードレッドライン（再帰 `rm`、force-push、`chmod -R 000 /`…）は**絶対に自動実行できない**。
+4. **トランザクション台帳** — 書き込みはすべて記録、`/undo` は diff `reverse_transform` + スナップショットで精密復元。
+
+ルールは常に `deny > ask > allow`。`qxt safe allow <cmd>` で許可リスト化を、安全の無効化でクリックを節約しないで。
+
+---
+
+## アイデアを走らせる場所
+
+- **メモリ** — 3 層（ユーザー/プロジェクト/セッション）+ SQLite FTS5（trigram）、使えなければ平文に自動ダウングレード。
+- **サブエージェント** — 型付き委譲（general-purpose / explore / plan / coder）、隔離サブエージェント、並行ワーカー、Swarm で長タスクを分割。
+- **Cron & バックグラウンド** — `qxt cron start --detach`；ヘッドレスで自律稼働。
+- **Hooks** — `PreToolUse` が `block` や `args` 書き換え（`hooks.allow_edit_args`）。
+- **可観測性** — `/stats`·`/audit`·`/impact`·`/bench`·`/cost`、コストを机の上へ。
+- **crypto** — v2 は堅牢：`cryptography` があれば AES-GCM(AEAD)、無ければ HMAC-SHA256 ストリーム暗号、`open()` で MAC 欠落・改変は常に fail-closed。
+
+---
+
+## 開発 & 規約
 
 ```bash
-git clone https://github.com/Qingnai-Technology-kino-koki/Qingxiaotuan-Agent-CLI.git
-cd qingxiaotuan
-pip install -e .
-
-qxt setup     # 30-second wizard: pick a provider, paste your API key
-qxt chat      # start talking
+python -m pytest tests/ -q        # 2000+ テスト
+python -m mypy qingxiaotuan       # 型ゲート
+qxt --print run "こんにちは。"     # スモーク
 ```
 
-ヘッドレスでのワンショットタスクにも対応しています:
+- **多言語文書規律**：`README_zh-CN.md` が権威あるマスター。各言語版は「生き生き、ドリフトなし」のローカライズで、**機械翻訳禁止**。
+- **規模**：約 414 `.py` / 約 7.7 万行 / 32 パッケージ / プラグイン 15+。
+- **バージョン**：`v0.2.014`（0.x/Beta）；破壊的変更はマイナーバージョンで事前告知 + 移行ヒント。
+- **深掘り**：九大エンジンのシグネチャと新規ツールのチュートリアルは `README_zh-CN.md` 末尾の付録。
 
-```bash
-qxt run "refactor utils.py into two modules and keep tests green"
-```
+---
 
-> **暗号化に関する注記:** `crypto` エンジンは標準ライブラリのみで構築されています（PBKDF2-HMAC-SHA256 による鍵導出 + SHA256 キーストリーム方式のストリーム暗号 + SHA-256 フィンガープリント）。このストリーム暗号は認証タグを持たない軽量設計であり、改ざん検知を伴うローカル用途には十分ですが、高セキュリティ向けのプリミティブではありません。
+## License & 関連
 
-## スラッシュコマンド
+- **License**：MIT（自由な使用・変更・再配布、著作権表示を保持）
+- **必読**：[SECURITY.md](SECURITY.md) · [CHANGELOG.md](CHANGELOG.md) · [ARCHITECTURE.md](ARCHITECTURE.md) · [NOTICE](NOTICE)
 
-`/help` `/tools` `/skills` `/memory` `/usage` `/cost` `/context` `/compact` `/diff` `/undo` `/model` `/effort` `/mode` `/plan` `/resume` `/swarm` `/route` `/clear` `/more` `/exit`
-
-主なコマンド:
-
-| コマンド | 機能 |
-| --- | --- |
-| `/plan` | 読み取り専用の分析モード — 変更を加えるツールは介入されます |
-| `/swarm` | マルチエージェント協調（強力なモデルで計画 → 安価なモデルで並列実行 → 強力なモデルで受領判断） |
-| `/route` | 難易度の見積もり + モデル提案（アドバイザリ、自動切り替えなし） |
-| `/compact` | 古い履歴を折りたたんでコンテキスト予算を回収 |
-| `/cost` | トークン使用量、キャッシュヒット率、推定支出額 |
-| `/undo` | ワークスペースを素早くロールバック（`all` / `--safe` / ファイル単位） |
-
-## ケイパビリティエンジン
-
-| エンジン | 提供機能 |
-| --- | --- |
-| `diff` | 行／単語レベルの差分 + パッチ適用 + 3-way マージ |
-| `crypto` | PBKDF2-HMAC-SHA256 による鍵導出 + SHA256 キーストリーム方式のストリーム暗号 + フィンガープリント |
-| `index` | FNV-1a によるインクリメンタルなシンボルインデックス |
-| `ansi` | ターミナルエスケープシーケンスの解析 / 除去 / 描画 |
-| `safety` | 最小影響範囲（minimum-blast-radius）ガードレール: リスクスコアリング + 影響範囲算出 + ブロック |
-| `json` | RFC 6901 ポインター / パス単位の差分 / ディープマージ |
-| `search` | 再帰的な正規表現検索（node_modules/.git を除外） |
-| `notify` | クロスプラットフォームのデスクトップ通知 |
-| `rules` | YAML ポリシー検証（eval を使わない安全な式） |
-| `skill-market` | スキルパッケージレジストリ: pull / publish / search |
-
-```bash
-qxt ext engines     # list engines actually available
-qxt ext selftest    # launch each engine, report health
-```
-
-## アーキテクチャ
-
-```
-qingxiaotuan/
-├── cli/          command layer (+ fullscreen TUI)
-├── core/         kernel & orchestration: kernel / agent / devloop / background / swarm
-├── config/       defaults / loader / plugin / validate
-├── ext/          10 pure-Python engines + registry
-├── models/       adapters: openai_compat / anthropic / provider_catalog / router
-├── memory/       store (SQLite FTS5) / sessions (append-only events)
-├── skills/       manager / plugin
-├── tools/        base / shell / filesystem / web / external / code / audit
-├── context/      indexer / manager
-├── cron/         scheduled jobs
-├── ui/           repl + fullscreen TUI (shared theme)
-└── resources/    bundled skill templates + SOUL.md identity
-```
-
-## 品質
-
-- **591 件のオフラインテスト** — ネットワーク不要。ローカルの OpenAI 互換モックサーバーに対する E2E 実行（エージェントのツールループ、ストリーミング、バックグラウンドワーカー、実際の `qxt` サブプロセス）を含みます。
-- **CI マトリクス**: Python 3.11 / 3.12 / 3.13。
-- ランタイム依存はわずか 5 つ: `openai`、`pyyaml`、`rich`、`prompt_toolkit`、`httpx`。
-
-## ロードマップ
-
-- [ ] 自動モデルルーティング（`router.enabled` をエージェントループに接続。現時点で `/route` はアドバイザリ）
-- [ ] PyPI への公開（`pip install qingxiaotuan`）
-- [ ] skill-market の公開レジストリ
-
-## コントリビューション
-
-Issue や PR を歓迎します — [CONTRIBUTING.md](./CONTRIBUTING.md) を参照してください。本 README の翻訳はこのファイル内で一元管理しており、どの言語の修正も PR で受け付けます。
-
-## ライセンス & クレジット
-
-MIT — [LICENSE](./LICENSE) を参照してください。
-
-オープンソースの巨人の肩の上に立つプロジェクトです。以下から着想を得て、Python でゼロから再実装しました:
-
-- **DeepSeek Harness (dsh)** — マイクロカーネル（Cordis スタイル）、すべてをプラグインとして扱う設計、プロファイルベースの設定、モデルニュートラルなアダプテーション、ヘッドレスタスク、追記専用のセッションイベントストリーム
-- **Hermes Agent** — 3 層メモリ、スキル自己進化ループ、SOUL.md アイデンティティ、SQLite FTS5 によるセッション横断の想起、cron ジョブ
-- **Claude Code** — 流れるような CLI インタラクション、思考中／ツール実行状況のライブ表示、大規模コンテキスト管理、インタラクティブなスラッシュコマンド
+> 「箱出しでクローズド、特定ベンダーに縛られたい」なら他にもある。**自分のモデルで走らせ、コントロールを握り、トラブル時は取り戻せる**——鍵はここに。

@@ -15,23 +15,52 @@ $PyExe     = Join-Path $ScriptsDir "python.exe"
 
 Write-Host "==> 青小团安装开始: $ProjectDir" -ForegroundColor Cyan
 
-# 0. 前置检查: 系统需有 python
-$PySystem = Get-Command python -ErrorAction SilentlyContinue
-if (-not $PySystem) {
-    Write-Host "!! 未找到 python。请先安装 Python 3.10+ 并勾选 'Add to PATH'。" -ForegroundColor Red
+# 0. 前置检查: 找一个「带 pip」的 python。
+#    注意: 某些发行版 / uv 管理的解释器虽能被 `python` 解析, 但其 venv 不含 pip,
+#    会导致后续 `pip install` 静默崩溃。故优先探测真正能用 pip 的解释器。
+function Find-UsablePython {
+    $candidates = @("py", "python3", "python")
+    foreach ($c in $candidates) {
+        try {
+            & $c --version 2>&1 | Out-Null
+            if ($LASTEXITCODE -ne 0) { continue }
+            & $c -m pip --version 2>&1 | Out-Null
+            if ($LASTEXITCODE -eq 0) { return $c }
+        } catch { }
+    }
+    return $null
+}
+
+$PyCmd = Find-UsablePython
+if (-not $PyCmd) {
+    Write-Host "!! 未找到带 pip 的 python。" -ForegroundColor Red
+    Write-Host "   请安装标准 Python 3.10+ (https://www.python.org) 并勾选 'Add to PATH' 后重试。" -ForegroundColor Yellow
+    Write-Host "   (某些 uv 管理的解释器 venv 不含 pip, 不被本脚本支持。)" -ForegroundColor DarkGray
     exit 1
 }
+Write-Host "==> 使用 python: $(& $PyCmd --version 2>&1)" -ForegroundColor DarkGray
 
 # 1. 虚拟环境
 if (-not (Test-Path $VenvDir)) {
     Write-Host "==> 创建虚拟环境 .venv ..." -ForegroundColor Cyan
-    & python -m venv $VenvDir
+    & $PyCmd -m venv $VenvDir
     if (-not (Test-Path $PyExe)) {
         Write-Host "!! 创建虚拟环境失败。" -ForegroundColor Red
         exit 1
     }
 } else {
     Write-Host "==> .venv 已存在, 跳过创建" -ForegroundColor DarkGray
+}
+
+# 1b. 确保 venv 内有 pip (极少数发行版 venv 缺 pip, 用 ensurepip 引导)
+& "$PyExe" -m pip --version 2>&1 | Out-Null
+if ($LASTEXITCODE -ne 0) {
+    Write-Host "==> venv 内未检测到 pip, 尝试 ensurepip 引导..." -ForegroundColor Yellow
+    & "$PyExe" -m ensurepip --upgrade 2>&1 | Out-Null
+    if ($LASTEXITCODE -ne 0) {
+        Write-Host "!! 无法在 venv 中引导 pip。请改用标准 Python 3.10+ (含 pip) 后重试。" -ForegroundColor Red
+        exit 1
+    }
 }
 
 # 2. 安装 (editable)
@@ -80,7 +109,7 @@ Write-Host ""
 Write-Host "  接下来 (请在一个『真实终端』里操作, 不要在本软件/IDE 内嵌命令行里跑):" -ForegroundColor Cyan
 Write-Host "    1) 打开 命令提示符 / Windows Terminal" -ForegroundColor White
 Write-Host "    2) 输入:  qxt              # 直接进交互界面, 就能打字了" -ForegroundColor White
-Write-Host "    3) 首次使用先配模型:  qxt model   (开箱支持多家平台)" -ForegroundColor White
+Write-Host "    3) 首次使用先配模型:  qxt models   (开箱支持多家平台)" -ForegroundColor White
 Write-Host "    4) 无限制模式:  qxt --yolo        # 危险操作自动批准" -ForegroundColor White
 Write-Host ""
 Write-Host "  也可以直接双击项目里的 qxt.bat 启动。" -ForegroundColor DarkGray

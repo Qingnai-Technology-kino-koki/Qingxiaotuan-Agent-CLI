@@ -1,158 +1,157 @@
-# Qingxiaotuan CLI (青小团)
+# Qingxiaotuan Agent CLI (青小团)
 
-[![CI](https://github.com/Qingnai-Technology-kino-koki/Qingxiaotuan-Agent-CLI/actions/workflows/ci.yml/badge.svg)](https://github.com/Qingnai-Technology-kino-koki/Qingxiaotuan-Agent-CLI/actions/workflows/ci.yml)
-[![Python](https://img.shields.io/badge/python-3.11%20%7C%203.12%20%7C%203.13-blue)](https://www.python.org)
-[![License: MIT](https://img.shields.io/badge/license-MIT-green)](./LICENSE)
-[![PRs Welcome](https://img.shields.io/badge/PRs-welcome-brightgreen)](./CONTRIBUTING.md)
+> **"Model + Harness = Agent."** — Split "how to think" from "how to run it safely," and hand you both keys.
+> A safety-first, model-agnostic, pure-Python AI Agent harness. `v0.2.014` · MIT · Python ≥ 3.10
 
-**English** | [简体中文](README_zh-CN.md) | [繁體中文](README_zh-TW.md) | [日本語](README_ja.md) | [한국어](README_ko.md) | [Español](README_es.md) | [Português (BR)](README_pt-BR.md) | [Français](README_fr.md) | [Deutsch](README_de.md) | [Русский](README_ru.md)
+**Language:** **English** · [简体中文](README_zh-CN.md) · [繁體中文](README_zh-TW.md) · [日本語](README_ja.md) · [한국어](README_ko.md) · [Español](README_es.md) · [Português (Brasil)](README_pt-BR.md) · [Français](README_fr.md) · [Deutsch](README_de.md) · [Русский](README_ru.md)
 
-> An agent CLI built around one idea: **know your blast radius before the agent touches anything.**
-> Every shell command is risk-analyzed and rated *before* it runs — critical operations are blocked by default, and a living mascot shows you exactly what state the agent is in.
+**Must-reads:** [SECURITY.md](SECURITY.md) · [CHANGELOG.md](CHANGELOG.md) · [ARCHITECTURE.md](ARCHITECTURE.md) · `qxt models list-providers`
 
-Pure-Python, zero-compile, model-neutral. 119 modules, ~21k lines of source backed by **591 offline tests** (mock-server end-to-end included) on a Python 3.11–3.13 CI matrix.
+---
 
-<!-- 📹 TODO(demo): drop a 30–60s terminal recording here showing:
-     qxt chat → task → mascot transitions → safety interception moment.
-     Until then, the ASCII state machine below is the real thing. -->
+## TL;DR
 
-## The Mascot Is the Status Bar
+Most agent CLIs ship *married to a vendor.* Qingxiaotuan is the opposite: it's a **brain-agnostic chassis**. Hot-swap across 48 providers, run fully offline, roll back destructive mistakes, and see the blast radius *before* the command fires. **The model does the thinking; it does the not-blowing-up.**
 
-Qingxiaotuan ("little green dumpling") is not a static logo — it is a **state machine with vital signs**, rendered live in your terminal so you always know what the agent is doing:
+**What it is not**: a captive wrapper around one model (hot-swap / self-host / offline, your call); an IDE sidekick (it's a plain terminal tool, drivable via ACP by VSCode/Zed/JetBrains); or a single leaky abstraction (microkernel plugin architecture for builders, plus a one-shot `setup` for everyone else).
 
+---
+
+## Why it's different
+
+| The thing | How far it goes |
+|---|---|
+| 🛡️ **Safety-first** | Four gates: static risk scoring, blast-radius pre-blocking, YOLO-redline floor, transactional ledger with exact `/undo` |
+| 🔌 **Model-agnostic** | 48 providers + local Ollama + hot-swap + auto-routing (`router.*`) |
+| 🧠 **Three main loops** | ReAct / Planner-Execute / DevLoop — pluggable; one kernel, different "thinking rhythms" |
+| 🔧 **Microkernel** | One-line `@plugin`, service registry, append-only event bus, hook middleware — a hacker's playground |
+| 🗂️ **Memory** | SQLite FTS5 + session event stream; three-tier memory, `/undo`, checkpoint, replay, Trajectory export |
+| 🧩 **Ecosystem** | MCP + ACP — plug tools in, or let your IDE drive it |
+| 🌍 **Ten languages** | zh-CN default, native localization of the whole UI |
+| 🐍 **Pure Python** | ~414 `.py` files / ~77k LOC / 32 packages / 15+ plugins, MIT-licensed |
+
+---
+
+## Straight answers
+
+**Q: "Is this really independent? No dirty laundry?"**
+The kernel and the vast majority of capabilities (`kernel/`, `core/`, `acp/`, `tools/`, `ports/`) are built from scratch in Python, aligned to external protocols for interoperability only. There is exactly **one deliberate exception**: the `--tui` terminal skin intentionally keeps **Kimi Code's** signature interaction style and palette (`#4FA8FF` primary, the moon-phase spinner, the two-line status bar) — "if the feel's good, don't reinvent it." That's the *only* part that wears another project's look, and it's credited in [NOTICE](NOTICE). Everything else is our own flesh and blood.
+
+**Q: Why does it block me before I run commands?**
+Feature, not bug. Dangerous commands ask first; YOLO still respects hard redlines. If it's too chatty, `qxt safe allow <cmd>` to allowlist — don't disable safety.
+
+**Q: What can `/undo` actually roll back?**
+Every **write** that goes through the ledger: a single file, a single step, a whole turn. Under the hood it's the transactional ledger + diff `reverse_transform` + checkpoint snapshots. Not a miracle cure, but it turns "I f'd up" from a guaranteed loss into a probable save.
+
+**Q: Will it read my private files?**
+Tool scope is constrained by a domain allow-list, egress is gated to prevent exfiltration, and secrets are redacted from output.
+
+**Q: Fully offline?**
+`qxt models local` to probe, `/offline` to manage Ollama. No internet, no problem.
+
+**Q: Can I write my own tools/plugins?**
+Yes — `@plugin` metadata, `activate(kernel)` + `kernel.provide(...)` / `kernel.require(...)`. Three steps:
+
+```python
+from ..core.kernel import Kernel, Plugin
+
+@plugin("my.tool", provides=["loop_registry"])
+class MyTool(Plugin):
+    def activate(self, kernel):
+        def _handler(ctx, query: str) -> str:
+            return f"echo: {query}"
+        kernel.provide("tools.my", _handler)
 ```
-  idle      thinking      working       alert        done
-  ( ◡ )     ? ⠋          ( • • )      ( @ • )      ✨
- ╭─────╮   ( ◠ ◠ )      ╭─────╮     ╭─────╮      ( ^ ^ )
- ╰─────╯   ╭─────╮      ╰─────╯     ╰─────╯      ╭─────╮
-           ╰─────╯       ▔▔▔▔▔        ⚠ BLOCKED    ╰─────╯
-  waiting  reasoning    tool call    intercepted   finished
-```
 
-| State | When | Visual |
-| --- | --- | --- |
-| `idle` | waiting for input | calm breathing |
-| `thinking` | model reasoning | swaying + spinner |
-| `working` | executing a tool call | floating + progress ring |
-| `alert` | **safety guardrail blocked** a dangerous command | turns orange, trembles — blast-radius control you can *see* |
-| `done` | task finished | crescent eyes + sparkle |
+---
 
-## Why This One
-
-- **Minimum Blast Radius by default** — before every shell command runs, the pure-Python `safety` engine does static risk analysis; `critical` commands (`rm -rf /`, `git push --force`, `DROP TABLE`) are **blocked before execution**, not merely logged after.
-- **Reversible workspace moves** — `/diff` to review changes, `/undo` to roll back (`--safe` mode included), sessions replayable via an append-only event stream.
-- **10 capability engines, all pure Python, zero IPC** — diff / crypto / index / ansi / safety / json / search / notify / rules / skill-market, wired through a registry with health checks (`qxt ext selftest`).
-- **Model-neutral** — DeepSeek, Claude, Gemini or local models behind OpenAI-compatible / Anthropic adapters; switch any time with `/model`. `/route` estimates task difficulty and suggests a model (advisory).
-- **Multi-agent swarm** — `/swarm` plans with a strong model, executes subtasks with cheaper models concurrently, then has the strong model accept-or-reject the result.
-- **Self-improve loop** — after each run the reflector diagnoses failures (pytest/npm/git/cargo/dotnet aware) and distills guardrails, so the same mistake is caught earlier next time.
-- **Memory that survives restarts** — three layers (session / facts / skills) with SQLite FTS5 full-text recall across sessions.
-- **UI in 10 languages** — 简体中文 / 繁體中文 / English / 日本語 / 한국어 / Español / Português (Brasil) / Français / Deutsch / Русский. Picked at first run (`qxt setup`), change any time in the config; agent replies follow your choice.
-- **Plain-text terminal output** — every CLI command prints pure text: no colors, no bold, no ANSI escapes (great for piping, logging, and CI). The interactive TUI keeps a single Kimi Code–style accent color (`#4FA8FF` light blue) for titles, badges and prompts; everything else stays unadorned.
-- **Fast cold start** — heavy SDKs (`openai`, `httpx`, `anthropic`) and command modules are lazy-imported, so `qxt --help` / `qxt --version` and the REPL start in well under two seconds.
-
-## Quick Start
-
-> Requires Python ≥ 3.11. Pure Python — nothing to compile.
+## Quick start
 
 ```bash
-git clone https://github.com/Qingnai-Technology-kino-koki/Qingxiaotuan-Agent-CLI.git
-cd qingxiaotuan
-pip install -e .
+# 1) Install (—[dev] is the full stack; drop to [openai]/[mcp] if you only need APIs)
+git clone <this repo> && cd qingxiaotuan-agent-cli
+python -m venv .venv && source .venv/bin/activate    # Windows: .venv\Scripts\activate
+pip install -e ".[dev]"
 
-qxt setup     # 30-second wizard: pick a provider, paste your API key
-qxt chat      # start talking
+# 2) Point at a provider (14 built-in profiles: deepseek / groq-free / siliconflow-free / ollama…)
+qxt setup
+# or by hand: ~/.qingxiaotuan/config.yaml
+#   model.provider: deepseek
+#   model.model: deepseek-chat
+#   model.api_key_env: DEEPSEEK_API_KEY      # keys never in plaintext
+
+# 3) Chat
+qxt
+# or a smoketest:
+qxt --print run "Hi, describe yourself in one sentence."
 ```
 
-Headless one-shot tasks work too:
+---
+
+## The command surface: 25 subcommands + 36 slash commands
+
+| Command | What it's for |
+|---|---|
+| `qxt` | Interactive TUI (Kimi Code skin) |
+| `qxt setup` / `qxt models` | Configure providers / list 48 models |
+| `qxt agent` | Named agents (`.claude/agents`-compatible, 3-tier discovery) |
+| `qxt acp` | Run an ACP server so VSCode / Zed / JetBrains can drive you |
+| `qxt cron` | Scheduled background tasks |
+| `qxt doctor` / `qxt bench` | Health check / benchmark |
+| `qxt arch demo` | One-command verify of the 5-layer architecture |
+
+Slash commands you'll live in: `/plan` · `/model` · `/undo`·`/impact` · `/swarm` · `/log`·`/stats`·`/cost`·`/budget`·`/goal`·`/sandbox`·`/offline`·`/verify`·`/audit`·`/more`·`/help` — full list via `Ctrl-G` in the TUI.
+
+---
+
+## Three main loops, one steady hand
+
+- **ReActLoop** — think → act → observe, the default rhythm.
+- **PlannerExecuteLoop** — a strong model plans, a cheap one executes (`router.*` supports plan/execute compartmentalization). The saver of tokens.
+- **DevLoop** — write-verify-heal: `/verify` auto-detects the project (Python/Node/Rust/Go), infers test commands, and self-heals for up to N rounds.
+
+---
+
+## The safety model: four gates + ledgered undo
+
+1. **Static scoring** — every shell command scored `none→critical` by `safety_engine.score()`, with indirect-expansion unfolding (IFS, `$VAR`, command substitution, ANSI-C/octal/hex escapes, PowerShell Base64, NFKC; ≤32 recursion).
+2. **Blast-radius pre-block** — you see what it'll touch *before* it fires (`--impact`).
+3. **YOLO-redline floor** — YOLO kills per-step confirmations but **cannot** touch hard redlines (recursive `rm`, force-push, `chmod -R 000 /`… never auto-run).
+4. **Transactional ledger** — every write has an audit trail; `/undo` restores via diff `reverse_transform` + snapshots.
+
+Rules always resolve `deny > ask > allow`. Whitelist with `qxt safe allow <cmd>`; never disable safety to save clicks.
+
+---
+
+## Where your ideas go to run
+
+- **Memory** — three tiers (user/project/session) + SQLite FTS5 (trigram), auto-degrades to plaintext if unavailable.
+- **Subagents** — typed delegation (general-purpose / explore / plan / coder), isolated subagents, concurrent workers, Swarm for sharding long tasks.
+- **Cron & background** — `qxt cron start --detach`; headless autonomy.
+- **Hooks** — `PreToolUse` can `block` or rewrite `args` (`hooks.allow_edit_args`) — a big seam for builders.
+- **Observability** — `/stats`·`/audit`·`/impact`·`/bench`·`/cost`; cost on the table.
+- **crypto** — v2 is solid: AES-GCM(AEAD) with `cryptography`, else HMAC-SHA256 stream cipher; missing-MAC / tampered `open()` always fails closed.
+
+---
+
+## Dev & contract
 
 ```bash
-qxt run "refactor utils.py into two modules and keep tests green"
+python -m pytest tests/ -q        # 2000+ tests
+python -m mypy qingxiaotuan       # typing gate
+qxt --print run "Hi, one line."   # smoke
 ```
 
-> **Crypto note:** the `crypto` engine is standard-library only (PBKDF2-HMAC-SHA256 key derivation + SHA256-keystream stream cipher + SHA-256 fingerprints). The stream cipher is a lightweight design without authentication tags — fine for tamper-evident local use, not a high-security primitive.
+- **i18n discipline**: README_zh-CN is the authoritative master; every locale is a vivid, zero-drift localization — **no mechanical translation.**
+- **Scale**: ~414 `.py` files / ~77k LOC / 32 packages / 15+ plugins.
+- **Version**: `v0.2.014` (0.x / Beta); breaking changes get a minor-version heads-up + migration notes.
+- **Deep dive**: engine signatures & a step-by-step tool walkthrough live in the appendix of `README_zh-CN.md`.
 
-## Slash Commands
+---
 
-`/help` `/tools` `/skills` `/memory` `/usage` `/cost` `/context` `/compact` `/diff` `/undo` `/impact` `/mcp` `/hooks` `/image` `/images` `/clear-images` `/model` `/effort` `/mode` `/plan` `/resume` `/swarm` `/route` `/clear` `/more` `/exit`
+## License & links
 
-Highlights:
+- **License**: MIT (use/modify/redistribute freely, keep the notice)
+- **Read these**: [SECURITY.md](SECURITY.md) · [CHANGELOG.md](CHANGELOG.md) · [ARCHITECTURE.md](ARCHITECTURE.md) · [NOTICE](NOTICE)
 
-| Command | What it does |
-| --- | --- |
-| `/plan` | read-only analysis mode — mutation tools are intercepted |
-| `/swarm` | multi-agent collaboration (strong plan → parallel cheap execution → strong acceptance) |
-| `/route` | difficulty estimate + model suggestion (advisory, no auto-switching) |
-| `/compact` | fold old history to reclaim context budget |
-| `/cost` | token usage, cache hit rate, estimated spend |
-| `/undo` | transactional rollback via Mutation Ledger (`N` / `<file>` / `all` / `--safe`); git fallback |
-| `/impact` | show operation ledger + blast radius (files changed, steps taken) |
-| `/mcp` | list connected MCP servers and their tools (`/mcp <server>` shows that server's tools) |
-| `/hooks` | user-level hooks: list configured scripts (`/hooks`); `/hooks test` triggers one |
-| `/image` | attach an image to the next turn (`/image <path|url|data:URI>`); `/images` lists pending; `/clear-images` clears |
-
-## Capability Engines
-
-| Engine | What it provides |
-| --- | --- |
-| `diff` | line/word-level diff + patch + 3-way merge |
-| `crypto` | PBKDF2-HMAC-SHA256 derivation + SHA256-keystream stream cipher + fingerprints |
-| `index` | FNV-1a incremental symbol index |
-| `ansi` | terminal escape parse / strip / render |
-| `hooks` | user-level pre/post tool hooks — scriptable, fail-safe, argv-only (no shell) |
-| `safety` | minimum-blast-radius guardrail: risk scoring + blast radius + blocking |
-| `ledger` | transactional mutation ledger: pre-exec snapshots + auto-rollback + fine-grained undo (first-mover) |
-| `vision` | multimodal: user/tool image attach → image_url blocks; gated by ModelCapabilities.vision; Anthropic translation |
-| `json` | RFC 6901 pointer / per-path diff / deep merge |
-| `search` | recursive regex search (ignores node_modules/.git) |
-| `notify` | cross-platform desktop notifications |
-| `rules` | YAML policy validation (no-eval safe expressions) |
-| `skill-market` | skill package registry: pull / publish / search |
-
-```bash
-qxt ext engines     # list engines actually available
-qxt ext selftest    # launch each engine, report health
-```
-
-## Architecture
-
-```
-qingxiaotuan/
-├── cli/          command layer (+ fullscreen TUI)
-├── core/         kernel & orchestration: kernel / agent / devloop / background / swarm
-├── config/       defaults / loader / plugin / validate
-├── ext/          10 pure-Python engines + registry
-├── models/       adapters: openai_compat / anthropic / provider_catalog / router
-├── memory/       store (SQLite FTS5) / sessions (append-only events)
-├── skills/       manager / plugin
-├── tools/        base / shell / filesystem / web / external / code / audit / mcp (stdio MCP bridge)
-├── context/      indexer / manager
-├── cron/         scheduled jobs
-├── ui/           repl + fullscreen TUI (shared theme)
-└── resources/    bundled skill templates + SOUL.md identity
-```
-
-## Quality
-
-- **591 offline tests** — no network required, including end-to-end runs against a local OpenAI-compatible mock server (agent tool loop, streaming, background worker, real `qxt` subprocess).
-- **CI matrix**: Python 3.11 / 3.12 / 3.13.
-- Only five runtime dependencies: `openai`, `pyyaml`, `rich`, `prompt_toolkit`, `httpx`.
-
-## Roadmap
-
-- [ ] Automatic model routing (wire `router.enabled` into the agent loop; today `/route` is advisory)
-- [ ] Publish to PyPI (`pip install qingxiaotuan`)
-- [ ] Skill market public registry
-
-## Contributing
-
-Issues and PRs welcome — see [CONTRIBUTING.md](./CONTRIBUTING.md). Translations for this README are coordinated in-file; fix any language via PR.
-
-## License & Credits
-
-MIT — see [LICENSE](./LICENSE).
-
-Standing on the shoulders of open source; ideas absorbed and re-implemented from scratch in Python:
-
-- **DeepSeek Harness (dsh)** — micro-kernel (Cordis-style), everything-is-a-plugin, profile-based config, model-neutral adaptation, headless tasks, append-only session event stream
-- **Hermes Agent** — three-layer memory, skill self-evolution loop, SOUL.md identity, SQLite FTS5 cross-session recall, cron jobs
-- **Claude Code** — fluid CLI interactions, live thinking/tool status display, large-context management, interactive slash commands
+> Want "open-box, closed, vendor experience"? Plenty of others do that. Want to **run on your own models, keep the control, and be able to take it back when things go sideways**? The keys are right here.
