@@ -1,0 +1,940 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://qingxiaotuan.dev/schemas/config.schema.json",
+  "title": "青小团 (qxt) 用户配置",
+  "description": "qxt 用户配置 schema (对应 ~/.qingxiaotuan/config.yaml)。由 scripts/gen_config_schema.py 从 DEFAULT_CONFIG 自动生成, 覆盖全部内置配置项; 编辑器据此自动补全键路径并校验类型。",
+  "type": "object",
+  "properties": {
+    "model": {
+      "type": "object",
+      "properties": {
+        "provider": {
+          "type": "string",
+          "default": "deepseek",
+          "description": "模型供应商名 (如 deepseek / openai / ollama / llamacpp 本地)。"
+        },
+        "base_url": {
+          "type": "string",
+          "default": "https://api.deepseek.com",
+          "description": "OpenAI 兼容端点; 本地 LLM 填 http://localhost:11434/v1 或 :8080/v1。"
+        },
+        "model": {
+          "type": "string",
+          "default": "deepseek-chat",
+          "description": "模型名 (如 deepseek-chat / claude-3-5-sonnet)。"
+        },
+        "api_key_env": {
+          "type": "string",
+          "default": "DEEPSEEK_API_KEY",
+          "description": "存放密钥的环境变量名 (本地 LLM 可留空, localhost 端点放通空 key)。"
+        },
+        "temperature": {
+          "type": "number",
+          "default": 0.7,
+          "description": "采样温度 (0~2, 越低越确定)。"
+        },
+        "max_tokens": {
+          "type": "integer",
+          "default": 8192,
+          "description": "单次回复最大 token 数。"
+        },
+        "stream": {
+          "type": "boolean",
+          "enum": [
+            true,
+            false
+          ],
+          "default": true,
+          "description": "是否流式输出。"
+        },
+        "prompt_cache": {
+          "type": "boolean",
+          "default": true,
+          "description": "稳定 system 前缀打缓存, 重复请求只计费增量。"
+        },
+        "timeout": {
+          "type": "integer",
+          "default": 120,
+          "description": "单次请求总体超时 (秒)。"
+        },
+        "connect_timeout": {
+          "type": "number",
+          "default": 10.0,
+          "description": "配置项 model.connect_timeout（默认值: 10.0）"
+        },
+        "read_timeout": {
+          "type": "number",
+          "default": 120.0,
+          "description": "配置项 model.read_timeout（默认值: 120.0）"
+        },
+        "max_retries": {
+          "type": "integer",
+          "default": 3,
+          "description": "调用失败自动重试次数 (agent 层指数退避)。"
+        },
+        "rate_limit": {
+          "type": "object",
+          "properties": {
+            "enabled": {
+              "type": "boolean",
+              "default": false,
+              "description": "配置项 model.rate_limit.enabled（默认值: False）"
+            },
+            "max_requests_per_minute": {
+              "type": "integer",
+              "default": 10,
+              "description": "配置项 model.rate_limit.max_requests_per_minute（默认值: 10）"
+            },
+            "max_concurrent": {
+              "type": "integer",
+              "default": 1,
+              "description": "配置项 model.rate_limit.max_concurrent（默认值: 1）"
+            }
+          },
+          "additionalProperties": true,
+          "description": "速率限制 (默认关闭, opt-in)。"
+        },
+        "planner": {
+          "type": "object",
+          "properties": {
+            "provider": {
+              "type": "string",
+              "default": "",
+              "description": "配置项 model.planner.provider（默认值: ''）"
+            }
+          },
+          "additionalProperties": true,
+          "description": "多 Agent 协作: 规划/验收用的强模型 (provider 留空=复用主模型)。"
+        },
+        "worker": {
+          "type": "object",
+          "properties": {
+            "provider": {
+              "type": "string",
+              "default": "",
+              "description": "配置项 model.worker.provider（默认值: ''）"
+            }
+          },
+          "additionalProperties": true,
+          "description": "多 Agent 协作: 并发执行的弱模型 (provider 留空=复用主模型)。"
+        }
+      },
+      "additionalProperties": true,
+      "description": "模型供应商配置 (provider / base_url / model / api_key_env / 温度 / 超时等)。"
+    },
+    "agent": {
+      "type": "object",
+      "properties": {
+        "max_iterations": {
+          "type": "integer",
+          "default": 30,
+          "description": "主循环最大迭代轮数。"
+        },
+        "max_retries": {
+          "type": "integer",
+          "default": 3,
+          "description": "模型调用失败重试次数。"
+        },
+        "retry_backoff": {
+          "type": "number",
+          "default": 2.0,
+          "description": "退避基数 (秒)。"
+        },
+        "retry_jitter": {
+          "type": "number",
+          "default": 0.3,
+          "description": "退避抖动比例 (0~1)。"
+        },
+        "retry_on": {
+          "type": "array",
+          "default": [
+            408,
+            409,
+            429,
+            500,
+            502,
+            503,
+            504
+          ],
+          "description": "配置项 agent.retry_on（默认值: [408, 409, 429, 500, 502, 503, 504]）",
+          "items": {
+            "type": "integer"
+          }
+        },
+        "circuit_breaker": {
+          "type": "object",
+          "properties": {
+            "enabled": {
+              "type": "boolean",
+              "default": false,
+              "description": "配置项 agent.circuit_breaker.enabled（默认值: False）"
+            },
+            "failure_threshold": {
+              "type": "integer",
+              "default": 5,
+              "description": "配置项 agent.circuit_breaker.failure_threshold（默认值: 5）"
+            },
+            "cooldown": {
+              "type": "number",
+              "default": 30.0,
+              "description": "配置项 agent.circuit_breaker.cooldown（默认值: 30.0）"
+            },
+            "success_threshold": {
+              "type": "integer",
+              "default": 1,
+              "description": "配置项 agent.circuit_breaker.success_threshold（默认值: 1）"
+            }
+          },
+          "additionalProperties": true,
+          "description": "熔断器 (默认关闭): 连续失败达阈值后快速失败。"
+        },
+        "skill_nudge_interval": {
+          "type": "integer",
+          "default": 3,
+          "description": "每 N 个 turn 提醒一次技能蒸馏。"
+        },
+        "context_max_messages": {
+          "type": "integer",
+          "default": 60,
+          "description": "超出后触发上下文压缩。"
+        },
+        "auto_memory": {
+          "type": "boolean",
+          "default": true,
+          "description": "会话结束自动固化重要事实到记忆。"
+        },
+        "show_reasoning": {
+          "type": "boolean",
+          "default": true,
+          "description": "是否实时显示模型的思维链。"
+        },
+        "effort": {
+          "type": "string",
+          "enum": [
+            "low",
+            "medium",
+            "high"
+          ],
+          "default": "high",
+          "description": "推理投入级别 low/medium/high, 影响迭代上限与自测严格度。"
+        },
+        "effort_profiles": {
+          "type": "object",
+          "properties": {
+            "low": {
+              "type": "object",
+              "properties": {
+                "loop_max_iter": {
+                  "type": "integer",
+                  "default": 6,
+                  "description": "配置项 agent.effort_profiles.low.loop_max_iter（默认值: 6）"
+                },
+                "auto_test": {
+                  "type": "boolean",
+                  "default": false,
+                  "description": "配置项 agent.effort_profiles.low.auto_test（默认值: False）"
+                },
+                "temperature": {
+                  "type": "number",
+                  "default": 0.8,
+                  "description": "配置项 agent.effort_profiles.low.temperature（默认值: 0.8）"
+                }
+              },
+              "additionalProperties": true
+            },
+            "medium": {
+              "type": "object",
+              "properties": {
+                "loop_max_iter": {
+                  "type": "integer",
+                  "default": 12,
+                  "description": "配置项 agent.effort_profiles.medium.loop_max_iter（默认值: 12）"
+                },
+                "auto_test": {
+                  "type": "boolean",
+                  "default": true,
+                  "description": "配置项 agent.effort_profiles.medium.auto_test（默认值: True）"
+                },
+                "temperature": {
+                  "type": "number",
+                  "default": 0.6,
+                  "description": "配置项 agent.effort_profiles.medium.temperature（默认值: 0.6）"
+                }
+              },
+              "additionalProperties": true
+            },
+            "high": {
+              "type": "object",
+              "properties": {
+                "loop_max_iter": {
+                  "type": "integer",
+                  "default": 20,
+                  "description": "配置项 agent.effort_profiles.high.loop_max_iter（默认值: 20）"
+                },
+                "auto_test": {
+                  "type": "boolean",
+                  "default": true,
+                  "description": "配置项 agent.effort_profiles.high.auto_test（默认值: True）"
+                },
+                "temperature": {
+                  "type": "number",
+                  "default": 0.4,
+                  "description": "配置项 agent.effort_profiles.high.temperature（默认值: 0.4）"
+                }
+              },
+              "additionalProperties": true
+            }
+          },
+          "additionalProperties": true,
+          "description": "各 effort 档对应的迭代上限 / 自测 / 温度。"
+        },
+        "subagent_max_workers": {
+          "type": "integer",
+          "default": 5,
+          "description": "子 Agent 并发上限 (1~16)。"
+        },
+        "subagent_timeout": {
+          "type": "integer",
+          "default": 180,
+          "description": "单个子任务超时 (秒)。"
+        },
+        "subagent_isolation": {
+          "type": "string",
+          "enum": [
+            "process",
+            "thread"
+          ],
+          "default": "process",
+          "description": "子 Agent 隔离方式: process=进程级沙箱 / thread=线程软隔离。"
+        }
+      },
+      "additionalProperties": true,
+      "description": "Agent 主循环与韧性配置。"
+    },
+    "observability": {
+      "type": "object",
+      "properties": {
+        "telemetry": {
+          "type": "object",
+          "properties": {
+            "enabled": {
+              "type": "boolean",
+              "enum": [
+                true,
+                false
+              ],
+              "default": false,
+              "description": "配置项 observability.telemetry.enabled（默认值: False）"
+            }
+          },
+          "additionalProperties": true,
+          "description": "调用级 telemetry span 与延迟/错误率统计。"
+        }
+      },
+      "additionalProperties": true,
+      "description": "可观测性 (默认全关, 开启仅累积 trace/指标, 不改变行为)。"
+    },
+    "context": {
+      "type": "object",
+      "properties": {
+        "auto_index": {
+          "type": "boolean",
+          "default": true,
+          "description": "进入 chat 时自动索引工作区结构。"
+        },
+        "index_max_files": {
+          "type": "integer",
+          "default": 300,
+          "description": "配置项 context.index_max_files（默认值: 300）"
+        },
+        "index_max_loc": {
+          "type": "integer",
+          "default": 200000,
+          "description": "配置项 context.index_max_loc（默认值: 200000）"
+        },
+        "pin_codebase": {
+          "type": "boolean",
+          "default": true,
+          "description": "配置项 context.pin_codebase（默认值: True）"
+        },
+        "compact_strategy": {
+          "type": "string",
+          "enum": [
+            "smart",
+            "none"
+          ],
+          "default": "smart",
+          "description": "压缩策略: smart=模型摘要 / none=仅折叠。"
+        },
+        "keep_recent": {
+          "type": "integer",
+          "default": 14,
+          "description": "始终保留的最近消息条数。"
+        },
+        "budget_tokens": {
+          "type": "integer",
+          "default": 60000,
+          "description": "压缩后目标回到该 token 预算内。"
+        },
+        "compact_trigger": {
+          "type": "integer",
+          "default": 60000,
+          "description": "配置项 context.compact_trigger（默认值: 60000）"
+        },
+        "short_task_max_chars": {
+          "type": "integer",
+          "default": 160,
+          "description": "配置项 context.short_task_max_chars（默认值: 160）"
+        },
+        "max_task_context_chars": {
+          "type": "integer",
+          "default": 1800,
+          "description": "配置项 context.max_task_context_chars（默认值: 1800）"
+        }
+      },
+      "additionalProperties": true,
+      "description": "上下文管理: 索引 / 压缩 / 召回策略。"
+    },
+    "loop": {
+      "type": "object",
+      "properties": {
+        "enabled": {
+          "type": "boolean",
+          "enum": [
+            true,
+            false
+          ],
+          "default": true,
+          "description": "是否启用自主循环。"
+        },
+        "max_iterations": {
+          "type": "integer",
+          "default": 12,
+          "description": "单轮任务自主迭代上限。"
+        },
+        "ask_every": {
+          "type": "integer",
+          "default": 1,
+          "description": "每几轮向用户确认一次 (0=不主动问)。"
+        },
+        "report_progress": {
+          "type": "boolean",
+          "default": true,
+          "description": "每轮主动向用户汇报进度。"
+        },
+        "auto_test": {
+          "type": "boolean",
+          "default": true,
+          "description": "每轮尝试运行测试做自测。"
+        },
+        "stop_on_user_ok": {
+          "type": "boolean",
+          "default": true,
+          "description": "用户满意即停止。"
+        },
+        "reflect_every": {
+          "type": "integer",
+          "default": 2,
+          "description": "每 N 轮反思一次, 减少重复验证调用。"
+        }
+      },
+      "additionalProperties": true,
+      "description": "自主开发循环 (DevLoop) 的行为配置。"
+    },
+    "tools": {
+      "type": "object",
+      "properties": {
+        "shell": {
+          "type": "object",
+          "properties": {
+            "enabled": {
+              "type": "boolean",
+              "default": true,
+              "description": "配置项 tools.shell.enabled（默认值: True）"
+            },
+            "require_confirm": {
+              "type": "boolean",
+              "default": true,
+              "description": "配置项 tools.shell.require_confirm（默认值: True）"
+            },
+            "timeout": {
+              "type": "integer",
+              "default": 60,
+              "description": "配置项 tools.shell.timeout（默认值: 60）"
+            }
+          },
+          "additionalProperties": true,
+          "description": "shell 工具: 是否启用 / 是否逐项确认 / 超时。"
+        },
+        "filesystem": {
+          "type": "object",
+          "properties": {
+            "enabled": {
+              "type": "boolean",
+              "default": true,
+              "description": "配置项 tools.filesystem.enabled（默认值: True）"
+            },
+            "require_confirm_write": {
+              "type": "boolean",
+              "default": false,
+              "description": "配置项 tools.filesystem.require_confirm_write（默认值: False）"
+            }
+          },
+          "additionalProperties": true,
+          "description": "文件系统工具: 是否启用 / 写是否确认。"
+        },
+        "web": {
+          "type": "object",
+          "properties": {
+            "enabled": {
+              "type": "boolean",
+              "default": true,
+              "description": "配置项 tools.web.enabled（默认值: True）"
+            },
+            "timeout": {
+              "type": "integer",
+              "default": 30,
+              "description": "配置项 tools.web.timeout（默认值: 30）"
+            }
+          },
+          "additionalProperties": true,
+          "description": "web 工具: 是否启用 / 超时。"
+        },
+        "cache_ttl": {
+          "type": "number",
+          "default": 60.0,
+          "description": "只读工具结果缓存 TTL (秒, 0=关闭)。"
+        }
+      },
+      "additionalProperties": true,
+      "description": "工具开关与超时。"
+    },
+    "mode": {
+      "type": "object",
+      "properties": {
+        "default": {
+          "type": "string",
+          "enum": [
+            "standard",
+            "yolo",
+            "plan"
+          ],
+          "default": "standard",
+          "description": "默认运行模式: standard(逐项确认) / yolo(全部自动批准) / plan(只读规划)。"
+        },
+        "yolo_require_confirm": {
+          "type": "array",
+          "default": [],
+          "description": "YOLO 模式下仍强制确认的工具 (留空=全部自动批准)。"
+        }
+      },
+      "additionalProperties": true,
+      "description": "运行模式。"
+    },
+    "permissions": {
+      "type": "object",
+      "properties": {
+        "shell": {
+          "type": "object",
+          "properties": {
+            "deny_patterns": {
+              "type": "array",
+              "default": [
+                "\\b(?:format|diskpart)\\b",
+                "\\b(?:shutdown|restart)-computer\\b"
+              ],
+              "description": "配置项 permissions.shell.deny_patterns（默认值: ['\\\\b(?:format|diskpart)\\\\b', '\\\\b(?:shutdown|restart)-computer\\\\b']）",
+              "items": {
+                "type": "string"
+              }
+            }
+          },
+          "additionalProperties": true,
+          "description": "shell 权限: deny_patterns 正则黑名单。"
+        },
+        "network": {
+          "type": "object",
+          "properties": {
+            "allow_domains": {
+              "type": "array",
+              "default": [],
+              "description": "配置项 permissions.network.allow_domains（默认值: []）"
+            }
+          },
+          "additionalProperties": true,
+          "description": "网络权限: allow_domains 域名白名单 (空=不限制)。"
+        },
+        "rules": {
+          "type": "array",
+          "default": [],
+          "description": "用户自定义规则表 (每条 {tool, pattern, action})。"
+        }
+      },
+      "additionalProperties": true,
+      "description": "权限规则: 内置 deny 模式 + 用户自定义 allow/deny/ask 规则表。"
+    },
+    "memory": {
+      "type": "object",
+      "properties": {
+        "fts_enabled": {
+          "type": "boolean",
+          "default": true,
+          "description": "是否启用全文检索。"
+        },
+        "recall_limit": {
+          "type": "integer",
+          "default": 5,
+          "description": "单次召回条数上限。"
+        }
+      },
+      "additionalProperties": true,
+      "description": "记忆系统配置。"
+    },
+    "skills": {
+      "type": "object",
+      "properties": {
+        "enabled": {
+          "type": "boolean",
+          "default": true,
+          "description": "配置项 skills.enabled（默认值: True）"
+        },
+        "auto_inject": {
+          "type": "boolean",
+          "default": true,
+          "description": "配置项 skills.auto_inject（默认值: True）"
+        },
+        "inject_limit": {
+          "type": "integer",
+          "default": 3,
+          "description": "配置项 skills.inject_limit（默认值: 3）"
+        }
+      },
+      "additionalProperties": true
+    },
+    "cron": {
+      "type": "object",
+      "properties": {
+        "enabled": {
+          "type": "boolean",
+          "default": true,
+          "description": "配置项 cron.enabled（默认值: True）"
+        },
+        "check_interval": {
+          "type": "integer",
+          "default": 60,
+          "description": "配置项 cron.check_interval（默认值: 60）"
+        },
+        "notify": {
+          "type": "boolean",
+          "default": true,
+          "description": "配置项 cron.notify（默认值: True）"
+        },
+        "max_output_chars": {
+          "type": "integer",
+          "default": 4000,
+          "description": "配置项 cron.max_output_chars（默认值: 4000）"
+        }
+      },
+      "additionalProperties": true
+    },
+    "background": {
+      "type": "object",
+      "properties": {
+        "enabled": {
+          "type": "boolean",
+          "default": true,
+          "description": "配置项 background.enabled（默认值: True）"
+        },
+        "max_turns": {
+          "type": "integer",
+          "default": 50,
+          "description": "配置项 background.max_turns（默认值: 50）"
+        },
+        "report_every": {
+          "type": "integer",
+          "default": 5,
+          "description": "配置项 background.report_every（默认值: 5）"
+        },
+        "poll_interval": {
+          "type": "number",
+          "default": 1.0,
+          "description": "配置项 background.poll_interval（默认值: 1.0）"
+        },
+        "heartbeat_timeout": {
+          "type": "number",
+          "default": 90.0,
+          "description": "配置项 background.heartbeat_timeout（默认值: 90.0）"
+        }
+      },
+      "additionalProperties": true
+    },
+    "mcp": {
+      "type": "object",
+      "properties": {
+        "enabled": {
+          "type": "boolean",
+          "default": true,
+          "description": "配置项 mcp.enabled（默认值: True）"
+        },
+        "timeout": {
+          "type": "number",
+          "default": 30.0,
+          "description": "配置项 mcp.timeout（默认值: 30.0）"
+        },
+        "servers": {
+          "type": "array",
+          "default": [],
+          "description": "配置项 mcp.servers（默认值: []）"
+        },
+        "security": {
+          "type": "object",
+          "properties": {
+            "max_calls_per_minute": {
+              "type": "integer",
+              "default": 60,
+              "description": "配置项 mcp.security.max_calls_per_minute（默认值: 60）"
+            },
+            "audit_enabled": {
+              "type": "boolean",
+              "default": true,
+              "description": "配置项 mcp.security.audit_enabled（默认值: True）"
+            }
+          },
+          "additionalProperties": true
+        }
+      },
+      "additionalProperties": true,
+      "description": "MCP 外部工具接入配置。"
+    },
+    "reflector": {
+      "type": "object",
+      "properties": {
+        "enabled": {
+          "type": "boolean",
+          "default": true,
+          "description": "配置项 reflector.enabled（默认值: True）"
+        },
+        "max_auto_fix": {
+          "type": "integer",
+          "default": 2,
+          "description": "配置项 reflector.max_auto_fix（默认值: 2）"
+        },
+        "verify_timeout": {
+          "type": "integer",
+          "default": 120,
+          "description": "配置项 reflector.verify_timeout（默认值: 120）"
+        },
+        "verify_tools": {
+          "type": "array",
+          "default": [],
+          "description": "配置项 reflector.verify_tools（默认值: []）"
+        }
+      },
+      "additionalProperties": true
+    },
+    "router": {
+      "type": "object",
+      "properties": {
+        "enabled": {
+          "type": "boolean",
+          "default": true,
+          "description": "配置项 router.enabled（默认值: True）"
+        },
+        "auto_switch": {
+          "type": "boolean",
+          "default": true,
+          "description": "配置项 router.auto_switch（默认值: True）"
+        },
+        "budget_limit": {
+          "type": "number",
+          "default": 0.0,
+          "description": "配置项 router.budget_limit（默认值: 0.0）"
+        },
+        "difficulty_override": {
+          "type": "integer",
+          "default": 0,
+          "description": "配置项 router.difficulty_override（默认值: 0）"
+        },
+        "plan_execute": {
+          "type": "boolean",
+          "default": false,
+          "description": "配置项 router.plan_execute（默认值: False）"
+        },
+        "plan_provider": {
+          "type": "string",
+          "default": "",
+          "description": "配置项 router.plan_provider（默认值: ''）"
+        },
+        "plan_model": {
+          "type": "string",
+          "default": "",
+          "description": "配置项 router.plan_model（默认值: ''）"
+        },
+        "escalate_on_stuck": {
+          "type": "boolean",
+          "default": true,
+          "description": "配置项 router.escalate_on_stuck（默认值: True）"
+        },
+        "stuck_threshold": {
+          "type": "integer",
+          "default": 3,
+          "description": "配置项 router.stuck_threshold（默认值: 3）"
+        }
+      },
+      "additionalProperties": true,
+      "description": "自动模型路由 (省钱 + 不降质 + 失败保险)。"
+    },
+    "collaboration": {
+      "type": "object",
+      "properties": {
+        "confirm_architecture": {
+          "type": "boolean",
+          "default": true,
+          "description": "配置项 collaboration.confirm_architecture（默认值: True）"
+        },
+        "confirm_destructive": {
+          "type": "boolean",
+          "default": true,
+          "description": "配置项 collaboration.confirm_destructive（默认值: True）"
+        },
+        "confirm_external": {
+          "type": "boolean",
+          "default": true,
+          "description": "配置项 collaboration.confirm_external（默认值: True）"
+        },
+        "auto_approve_minor": {
+          "type": "boolean",
+          "default": true,
+          "description": "配置项 collaboration.auto_approve_minor（默认值: True）"
+        }
+      },
+      "additionalProperties": true
+    },
+    "language": {
+      "type": "string",
+      "default": "",
+      "description": "配置项 language（默认值: ''）"
+    },
+    "ui": {
+      "type": "object",
+      "properties": {
+        "theme": {
+          "type": "string",
+          "default": "dark",
+          "description": "配置项 ui.theme（默认值: 'dark'）"
+        },
+        "show_token_usage": {
+          "type": "boolean",
+          "default": true,
+          "description": "配置项 ui.show_token_usage（默认值: True）"
+        },
+        "show_cost_report": {
+          "type": "boolean",
+          "default": true,
+          "description": "配置项 ui.show_cost_report（默认值: True）"
+        },
+        "show_reflect_summary": {
+          "type": "boolean",
+          "default": true,
+          "description": "配置项 ui.show_reflect_summary（默认值: True）"
+        },
+        "output_style": {
+          "type": "string",
+          "default": "default",
+          "description": "配置项 ui.output_style（默认值: 'default'）"
+        },
+        "editor": {
+          "type": "string",
+          "default": "",
+          "description": "配置项 ui.editor（默认值: ''）"
+        }
+      },
+      "additionalProperties": true,
+      "description": "交互界面外观配置。"
+    },
+    "ledger": {
+      "type": "object",
+      "properties": {
+        "enabled": {
+          "type": "boolean",
+          "default": true,
+          "description": "配置项 ledger.enabled（默认值: True）"
+        },
+        "snapshot_dir": {
+          "type": "string",
+          "default": ".qxt/ledger",
+          "description": "配置项 ledger.snapshot_dir（默认值: '.qxt/ledger'）"
+        },
+        "auto_rollback_on_error": {
+          "type": "boolean",
+          "default": true,
+          "description": "配置项 ledger.auto_rollback_on_error（默认值: True）"
+        },
+        "keep_snapshots": {
+          "type": "boolean",
+          "default": true,
+          "description": "配置项 ledger.keep_snapshots（默认值: True）"
+        },
+        "max_records": {
+          "type": "integer",
+          "default": 200,
+          "description": "配置项 ledger.max_records（默认值: 200）"
+        },
+        "impact_preview": {
+          "type": "boolean",
+          "default": true,
+          "description": "配置项 ledger.impact_preview（默认值: True）"
+        }
+      },
+      "additionalProperties": true
+    },
+    "hooks": {
+      "type": "object",
+      "properties": {
+        "enabled": {
+          "type": "boolean",
+          "default": true,
+          "description": "配置项 hooks.enabled（默认值: True）"
+        },
+        "default_timeout": {
+          "type": "integer",
+          "default": 5,
+          "description": "配置项 hooks.default_timeout（默认值: 5）"
+        },
+        "allow_blocking": {
+          "type": "boolean",
+          "default": true,
+          "description": "配置项 hooks.allow_blocking（默认值: True）"
+        },
+        "allow_edit_args": {
+          "type": "boolean",
+          "default": false,
+          "description": "配置项 hooks.allow_edit_args（默认值: False）"
+        },
+        "audit_log": {
+          "type": "boolean",
+          "default": true,
+          "description": "配置项 hooks.audit_log（默认值: True）"
+        }
+      },
+      "additionalProperties": true
+    },
+    "engine": {
+      "type": "object",
+      "properties": {
+        "isolation": {
+          "type": "boolean",
+          "default": false,
+          "description": "配置项 engine.isolation（默认值: False）"
+        },
+        "isolation_timeout": {
+          "type": "number",
+          "default": 30.0,
+          "description": "配置项 engine.isolation_timeout（默认值: 30.0）"
+        }
+      },
+      "additionalProperties": true
+    }
+  },
+  "additionalProperties": true
+}

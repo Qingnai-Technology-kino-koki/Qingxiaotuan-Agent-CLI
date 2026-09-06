@@ -1,0 +1,27 @@
+name: undo
+title: 事务化撤销 (/undo)
+level: 1
+description: 让 Agent 改坏东西也能精确回滚——这是很多 Agent 没有的"操作可视化 + 可撤销"。
+steps:
+  - title: 一次改动，一笔账
+    narrative: |
+      青小团把每次文件改动写进持久化账本（.qxt/ledger，可跨进程）。
+      这意味着任何一步都能被精确回滚，而不是"全靠 git 兜底"。
+    try: |
+      qxt
+    note: 进入 REPL，让 Agent 改一个文件，比如「把 utils.py 里的 format_date 改成支持时区」。
+
+  - title: 回滚最近一步
+    narrative: |
+      Agent 改完之后，用 /undo 撤回。支持按步数、按文件、全部回滚。
+    try: |
+      /undo
+    note: REPL 内输入。其他写法：`/undo 2`（回滚最近 2 步）、
+      `/undo utils.py`（只回滚某文件）、`/undo all`（全部回滚）。
+
+  - title: 先看爆炸半径再撤
+    narrative: |
+      不确定改了什么？先 /impact 把账本铺开，再决定撤哪一步。
+    try: |
+      /impact
+    note: 需要当前会话已经有过文件改动；没有的话先跑一次 `qxt run "创建 /tmp/hello.txt"`。

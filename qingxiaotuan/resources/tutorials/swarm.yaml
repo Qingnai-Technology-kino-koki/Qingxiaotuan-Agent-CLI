@@ -1,0 +1,19 @@
+name: swarm
+title: 多智能体协作 (/swarm)
+level: 2
+description: 一条命令启动多角色协作：强模型规划 → 弱模型并发执行 → 强模型验收。
+steps:
+  - title: 什么是 swarm
+    narrative: |
+      单个 Agent 容易在长任务里"跑偏"。swarm 把任务拆给多个专业角色：
+      规划者（强模型）定方案、执行者（弱模型）并发干活、验收者（强模型）把关质量。
+    try: |
+      qxt
+    note: 进入 REPL 后输入：`/swarm 写一个带增删改查的简易 TODO CLI`
+
+  - title: 不在 REPL 也能触发
+    narrative: |
+      swarm 也通过 headless 任务触发（底层复用同一套编排），适合写进脚本/CI 看真实协作效果。
+    try: |
+      qxt run "用多智能体协作方式，给当前项目补一份 CONTRIBUTING 的中文版"
+    note: 需要联网与模型额度；仅在你想看真实协作效果时运行（可加 --max-cost 0.5 设上限）。

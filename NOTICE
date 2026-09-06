@@ -1,0 +1,53 @@
+青小团 Qingxiaotuan CLI
+Copyright (c) 2026 六安市青奈科技有限责任公司
+(Lu'An Qingxiaotuan-Technology Co.,LTD)
+
+This product is developed independently by Lu'An Qingxiaotuan-Technology Co.,LTD.
+It contains software derived from third-party projects, attributed below in
+accordance with the respective licenses.
+
+-------------------------------------------------------------------------------
+THIRD-PARTY COMPONENTS
+-------------------------------------------------------------------------------
+
+1) kosong provider / agent / session / MCP / ACP layer
+   Location: qingxiaotuan/kernel/
+   Origin:   a Python port of the `kosong` framework from Kimi Code
+   Upstream: https://github.com/MoonshotAI/kimi-code
+   Holder:   Moonshot AI
+   License:  MIT (text reproduced below)
+
+   Note: this layer has been substantially rewritten and extended by the
+   Qingxiaotuan project (fusion layers, safety gates, context compaction,
+   agent-loop enhancements). The MIT notice is retained only for the
+   originally-derived portions, as required by the license.
+
+2) Runtime third-party libraries (installed via pip, not vendored):
+   pyyaml, rich, prompt_toolkit, httpx — each under its own license
+   (see pyproject.toml for version constraints).
+
+-------------------------------------------------------------------------------
+MIT LICENSE (as required to be retained for component 1)
+-------------------------------------------------------------------------------
+
+MIT License
+
+Copyright (c) Moonshot AI
+
+Permission is hereby granted, free of charge, to any person obtaining a copy
+of this software and associated documentation files (the "Software"), to deal
+in the Software without restriction, including without limitation the rights
+to use, copy, modify, merge, publish, distribute, sublicense, and/or sell
+copies of the Software, and to permit persons to whom the Software is
+furnished to do so, subject to the following conditions:
+
+The above copyright notice and this permission notice shall be included in all
+copies or substantial portions of the Software.
+
+THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR
+IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY,
+FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL THE
+AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER
+LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM,
+OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
+SOFTWARE.

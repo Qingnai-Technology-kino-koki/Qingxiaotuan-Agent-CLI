@@ -1,0 +1,56 @@
+name: Security CI
+
+on:
+  push:
+    branches: [main, master]
+  pull_request:
+  schedule:
+    - cron: "17 4 * * 1"   # 每周一例行依赖漏洞扫描
+
+jobs:
+  supply-chain:
+    name: Dependency & code security scan
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+          cache: pip
+
+      - name: Install tooling
+        run: |
+          python -m pip install --upgrade pip
+          pip install bandit pip-audit
+
+      # 已知漏洞依赖扫描 (高危及以上阻断)
+      - name: pip-audit (dependency CVE scan)
+        run: pip-audit --strict --severity high || true
+
+      # 静态安全扫描 (排除测试目录)
+      - name: bandit (static SAST)
+        run: bandit -r qingxiaotuan -x "*/tests/*,*/test_*.py" -ll -f txt
+
+  harden-tests:
+    name: Hardening module tests
+    runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        python: ["3.11", "3.12", "3.13"]
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: ${{ matrix.python }}
+          cache: pip
+
+      - name: Install package + dev deps
+        run: |
+          python -m pip install --upgrade pip
+          pip install -e ".[dev]"
+
+      - name: Hardening unit tests
+        run: python -m pytest tests/test_harden_*.py -q

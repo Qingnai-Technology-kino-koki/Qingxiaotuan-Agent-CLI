@@ -1,0 +1,32 @@
+name: safety
+title: 安全护栏 (blast-radius)
+level: 1
+description: 体验青小团如何拦截危险命令、把"影响半径"摊开给你看，而不是出了事再补救。
+steps:
+  - title: 影响半径 (blast-radius) 是什么
+    narrative: |
+      青小团最核心的差异点不是"功能多"，而是**危险操作会被拦、改坏了能精确撤回**。
+      它内置了一个多层反混淆的 shell 安全引擎：会先解开 ANSI-C 转义、Base64 管道、
+      PowerShell Base64、变量替换、间接调用，再给命令打分。命中硬红线
+      （rm -rf /、磁盘擦除、关机、分区销毁……）的命令**即使在 YOLO 模式也永不自动执行**。
+    try: |
+      qxt ext call safety score '{"command":"rm -rf /tmp/demo"}'
+    demo: true
+    note: 这条命令会被评为高危/红线，引擎返回的分里能直接看到它为什么危险。
+
+  - title: 在对话里亲眼看到拦截
+    narrative: |
+      进入交互界面，故意下一条危险指令，观察它**不会**直接执行，而是要求确认，
+      或被 fail-closed 闸门直接拒绝。
+    try: |
+      qxt
+    note: 进入 REPL 后输入：「删除 /tmp 下面所有的文件」。标准模式下会弹确认；
+      想体验全自动危险模式可用 `qxt --mode yolo`（红线仍不自动执行）。
+
+  - title: 把影响半径摊开看
+    narrative: |
+      任何一次会话的改动都被记进账本。先让 Agent 改点东西，再用 `/impact`
+      把"爆炸半径"铺开——哪些文件被改、改了几步，提交前一目了然。
+    try: |
+      qxt run "在 /tmp 创建一个 hello.txt 并写入一行文字"
+    note: 跑完后进入 `qxt`，输入 `/impact` 查看影响半径；`/undo` 可精确回滚。

@@ -1,0 +1,19 @@
+name: cost
+title: 成本透明 (/cost)
+level: 1
+description: 每次会话的 token 用量、缓存命中率、估算费用都看得见，还能设花费上限。
+steps:
+  - title: 看一眼花了多少
+    narrative: |
+      青小团默认把成本摊开，而不是黑盒。一个 /cost 就能看到本次会话的 token 用量、
+      缓存命中率与估算费用。
+    try: |
+      qxt
+    note: REPL 内输入 `/cost`。也可 `/effort high` 调推理投入、`/route` 看路由决策。
+
+  - title: 设个花费上限，超限自停
+    narrative: |
+      怕跑飞？给单次任务设 USD 上限，超过自动停止——适合无人值守/后台任务。
+    try: |
+      qxt run "重构 legacy_parser.py" --max-cost 0.5
+    note: "`--max-cost 0.5` 表示超过 0.5 美元就停；后台跑可加 `--bg`。"
