@@ -1,5 +1,8 @@
 """进程级沙箱子 Agent 拉起器 —— 让"多双手"在隔离世界里挥, 主仓库零风险。
 
+注意: 此模块提供「进程级」沙箱 (复制工作区到临时目录, subprocess 隔离)。
+OS 级沙箱 (seccomp/bwrap/seatbelt/token-acl) 见 core.sandbox_provider。
+
 核心思路:
 - 主进程为每个子任务建一个**临时沙箱目录** (主工作区的副本);
 - 用 subprocess 拉起 `_sandbox_entry` 子进程, 在沙箱目录里独立 build_kernel + run;
@@ -25,6 +28,7 @@ from pathlib import Path
 from typing import Any, Dict, List, Optional
 
 from .subagents import SubResult, SubTask
+from .security_utils import sanitize_env as _sanitize_sandbox_env  # noqa: F401,F811
 
 
 def prepare_sandbox(
@@ -109,7 +113,7 @@ def run_in_sandbox(
             stdout=subprocess.DEVNULL,
             stderr=subprocess.DEVNULL,
             timeout=timeout,
-            env=dict(os.environ),  # 继承 API Key 等环境
+            env=_sanitize_sandbox_env(dict(os.environ)),  # 默认抹除密钥, 防泄漏到沙箱
         )
         if not resp_path.exists():
             exit_code = proc.returncode if proc is not None else "?"

@@ -44,6 +44,25 @@ def _shannon_entropy(s: str) -> float:
     return -sum((c / n) * math.log2(c / n) for c in freq.values())
 
 
+# ---------------------------------------------------------------- ReDoS 防护
+# 规则来自「管理设置 / 组织策略」时, 恶意规则可嵌入灾难性回溯正则拖垮 Agent。
+# 这里在编译前做长度与嵌套量词检查, 拒绝明显危险的 pattern。
+
+_MAX_RULE_PATTERN_LEN = 1024
+
+# 嵌套量词: 形如 (...含量词...) 紧跟 + / * / ? —— 典型 ReDoS 结构 (如 (a+)+)
+_REDOS_NESTED = re.compile(r"\((?:[^()]*[+*?])\)[+*?]")
+
+
+def _safe_compile(pattern: str, flags: int = 0) -> "re.Pattern":
+    """编译规则正则, 拒绝过长或含嵌套量词的 pattern (防 ReDoS)。"""
+    if len(pattern) > _MAX_RULE_PATTERN_LEN:
+        raise ValueError(f"规则正则过长 (>{_MAX_RULE_PATTERN_LEN}), 拒绝编译 (防 ReDoS)")
+    if _REDOS_NESTED.search(pattern):
+        raise ValueError("规则正则含嵌套量词, 拒绝编译 (防 ReDoS)")
+    return re.compile(pattern, flags)
+
+
 _FORBIDDEN_PATTERNS = [
     re.compile(r"\beval\s*\("),
     re.compile(r"\bexec\s*\("),
@@ -148,7 +167,10 @@ class _Parser:
                 flags = 0
                 if "i" in m.group(2):
                     flags |= re.IGNORECASE
-                return {"regex": re.compile(m.group(1), flags)}
+                try:
+                    return {"regex": _safe_compile(m.group(1), flags)}
+                except ValueError:
+                    return {"regex": None}  # 危险/非法正则: 视为不匹配, 不崩溃
             return {"regex": None}
         if self._peek() == "(":
             self._next()
@@ -199,9 +221,30 @@ def _eval(node, scope: dict):
         if fn == "contains":
             return str(args[0]).__contains__(str(args[1]))
         if fn == "matches":
-            return bool(args[0]) and bool(args[0].search(str(args[1])))
+            # 语义: matches(subject, pattern) —— 判断 subject 是否匹配 pattern。
+            # args[0]=待匹配文本(subject), args[1]=正则(pattern, 已编译或字符串)。
+            subj = args[0]
+            pat = args[1] if len(args) > 1 else None
+            if isinstance(pat, str):
+                try:
+                    pat = _safe_compile(pat)
+                except (ValueError, re.error):
+                    return False
+            if pat is None:
+                return False
+            return bool(pat.search(str(subj)))
         if fn == "regex_contains":
-            return bool(args[0]) and bool(args[0].search(str(args[1])))
+            # 同 matches: regex_contains(subject, pattern)
+            subj = args[0]
+            pat = args[1] if len(args) > 1 else None
+            if isinstance(pat, str):
+                try:
+                    pat = _safe_compile(pat)
+                except (ValueError, re.error):
+                    return False
+            if pat is None:
+                return False
+            return bool(pat.search(str(subj)))
         if fn == "startsWith":
             return str(args[0]).startswith(str(args[1]))
         if fn == "endsWith":
@@ -314,9 +357,10 @@ class RuleEngine:
                     continue
             if match.get("content"):
                 try:
-                    if not re.search(str(match["content"]), content):
+                    pattern = _safe_compile(str(match["content"]))
+                    if not pattern.search(content):
                         continue
-                except re.error:
+                except (ValueError, re.error):
                     continue
             scope = {"path": path, "content": content, "kind": kind, "text": content}
             try:
@@ -339,6 +383,20 @@ class RuleEngine:
                     "rule": r["assert"], "hit_lines": lines,
                 })
         return violations
+
+    def enforce(self, content: str, path: str, kind: str = "file") -> "str | None":
+        """规则强制: 返回 None 表示通过; 返回拒绝原因字符串表示命中 error 级违规。
+
+        让规则引擎从「仅检测」升级为「可执行门禁」——写文件/应用补丁前调用,
+        error 级违规直接返回拒绝原因, 由调用方阻断写入。
+        """
+        violations = self.check(path, content, kind)
+        blocking = [v for v in violations if v.get("severity") == "error"]
+        if not blocking:
+            return None
+        msgs = "; ".join(v.get("message", v.get("id", "")) for v in blocking)
+        return f"[策略拦截] 命中错误级规则: {msgs}"
+
 
     def handle(self, line: str) -> str:
         try:
@@ -398,6 +456,14 @@ class RuleEngine:
                 continue
             sys.stdout.write(self.handle(line) + "\n")
             sys.stdout.flush()
+
+
+def enforce(content: str, path: str, kind: str = "file",
+           engine: "RuleEngine | None" = None) -> "str | None":
+    """模块级便捷封装: 对给定内容做规则强制, 返回拒绝原因或 None (通过)。"""
+    if engine is None:
+        return None
+    return engine.enforce(content, path, kind)
 
 
 if __name__ == "__main__":

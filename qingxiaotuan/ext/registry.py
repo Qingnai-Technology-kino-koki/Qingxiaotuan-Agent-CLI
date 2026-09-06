@@ -11,7 +11,6 @@
 - search: 递归正则检索
 - notify: 跨平台桌面通知
 - rules: YAML 规则策略校验 (无 eval 安全表达式)
-- skill-market: 技能包 registry: 拉取 / 发布 / 检索
 """
 import json
 import os
@@ -31,7 +30,6 @@ ENGINE_MAP = {
     "search": ("qingxiaotuan.ext.search_engine", "SearchEngine"),
     "notify": ("qingxiaotuan.ext.notify_engine", "NotifyEngine"),
     "rules": ("qingxiaotuan.ext.rules_engine", "RuleEngine"),
-    "skill-market": ("qingxiaotuan.ext.skill_market_engine", "SkillMarketEngine"),
 }
 
 # 可用引擎列表 (按名称)
@@ -55,7 +53,13 @@ def engine_healthcheck(name: Optional[str] = None) -> dict:
     for eng in engines:
         try:
             instance = get_engine(eng)
-            meta = instance.list_methods()
+            # RuleEngine 没有 list_methods, 用 handle(_meta/list) 代替
+            if hasattr(instance, "list_methods"):
+                meta = instance.list_methods()
+            else:
+                import json as _json
+                resp = instance.handle(_json.dumps({"method": "_meta/list", "params": {}}))
+                meta = _json.loads(resp).get("result", {})
             results[eng] = {"ok": True, "meta": meta}
         except Exception as e:
             results[eng] = {"ok": False, "error": str(e)}

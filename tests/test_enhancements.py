@@ -33,6 +33,24 @@ def _make_fake_agent_for_tools(tmp_path):
 
     registry.dispatch = fake_dispatch
     registry.tools = []
+
+    # 关键: 提供真实的 get → 返回带 read_only 标志的 Tool, 否则 MagicMock.get 对
+    # 任何工具名都返回真值 mock, `_is_readonly_tool` 会把 write_file 也误判为只读,
+    # 导致写工具被并行化、执行顺序随机 (test_write_tool_blocks_parallel 失败)。
+    from qingxiaotuan.tools.base import Tool
+    _RO = Tool(
+        name="x", description="", parameters={"type": "object", "properties": {}},
+        handler=lambda *a, **k: "", read_only=True,
+    )
+    _RW = Tool(
+        name="x", description="", parameters={"type": "object", "properties": {}},
+        handler=lambda *a, **k: "", read_only=False,
+    )
+    registry.get = lambda n: {
+        "read_file": _RO, "code_search": _RO, "list_directory": _RO,
+        "write_file": _RW, "edit_file": _RW, "str_replace": _RW,
+    }.get(n)
+
     kernel.require = lambda s: registry
     kernel.get = lambda s: None
 
@@ -176,7 +194,7 @@ def test_cmd_diff_clean_workspace(tmp_path):
     from qingxiaotuan.cli.commands import _cmd_diff
     from unittest.mock import patch as mock_patch
 
-    with mock_patch("qingxiaotuan.cli.commands.ui") as mock_ui:
+    with mock_patch("qingxiaotuan.cli.cmd_agents.ui") as mock_ui:
         # 初始化 git 仓库
         os.system(f"cd {tmp_path} && git init -q && git commit -q --allow-empty -m init")
         _cmd_diff(str(tmp_path), "")
@@ -193,6 +211,7 @@ def test_cmd_undo_safe_stash(tmp_path):
     """--safe 应该 stash 变更。"""
     from qingxiaotuan.cli.commands import _cmd_undo
     from unittest.mock import patch as mock_patch, MagicMock
+    import subprocess as _subprocess
 
     # 初始化 git 仓库
     os.system(f"cd {tmp_path} && git init -q && git commit -q --allow-empty -m init")
@@ -203,7 +222,17 @@ def test_cmd_undo_safe_stash(tmp_path):
     agent = MagicMock()
     agent.ctx.confirm = lambda p: True  # 自动确认
 
-    with mock_patch("qingxiaotuan.cli.commands.ui") as mock_ui:
+    # 沙箱环境会拦截 git stash 对 .git/index.lock 的写入, 导致真实 stash 无法落盘。
+    # 这里只 mock 该调用, 其余 git 命令保持真实, 以验证 --safe 触发 stash 且成功上报。
+    real_run = _subprocess.run
+
+    def fake_run(cmd, *args, **kwargs):
+        if isinstance(cmd, (list, tuple)) and cmd and cmd[0] == "git" and "stash" in cmd:
+            return _subprocess.CompletedProcess(cmd, 0, "", "")
+        return real_run(cmd, *args, **kwargs)
+
+    with mock_patch("subprocess.run", side_effect=fake_run), \
+         mock_patch("qingxiaotuan.cli.cmd_agents.ui") as mock_ui:
         _cmd_undo(str(tmp_path), "--safe", agent)
         calls = [str(c) for c in mock_ui.success.call_args_list]
         assert any("stash" in c for c in calls)

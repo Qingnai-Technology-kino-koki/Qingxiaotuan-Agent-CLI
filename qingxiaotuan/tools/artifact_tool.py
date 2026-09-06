@@ -75,7 +75,7 @@ def _open_browser(path: Path) -> bool:
     """在默认浏览器中打开文件。"""
     try:
         if sys.platform == "win32":
-            os.startfile(str(path))  # type: ignore[attr-defined]
+            os.startfile(str(path))
         elif sys.platform == "darwin":
             subprocess.Popen(["open", str(path)], stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
         else:

@@ -14,6 +14,7 @@ import json
 import logging
 import re
 import threading
+import time
 from dataclasses import dataclass, field
 from datetime import datetime, timezone
 from pathlib import Path
@@ -169,7 +170,7 @@ class AuditStore:
         safe = redact(payload)
         with self._lock:
             self._seq += 1
-            ev = AuditEvent(seq=self._seq, ts=__import__("time").time(),
+            ev = AuditEvent(seq=self._seq, ts=time.time(),
                             type=event_type, payload=safe, raw=payload)
             self._buffer.append(ev)
             if len(self._buffer) > MAX_BUFFER:
@@ -300,4 +301,12 @@ class AuditStore:
             self._buffer.clear()
 
     def close(self) -> None:
-        pass
+        """关闭审计存储: 停止接受新事件并释放缓冲 (幂等)。
+
+        落盘按事件即时写入, 无后台缓冲可 flush; 关闭后 ``log()`` 直接短路,
+        避免在已经逃逸对列关张引用后继续追加。
+        """
+        with self._lock:
+            self.enabled = False
+            self._buffer.clear()
+            self._path = None

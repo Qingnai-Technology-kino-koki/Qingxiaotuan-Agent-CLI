@@ -9,11 +9,16 @@ from __future__ import annotations
 import json
 from typing import Any, Tuple
 
-from rich.table import Table
+from ..ui.format import Table
 
-from ..app import build_kernel
 from ..self_improve.plugin import SelfImprovePlugin
 from ..ui.plain_console import console
+
+
+def build_kernel(*a, **k):
+    """惰性构建内核: 仅实际执行 improve 命令时才加载 app 链。"""
+    from ..app import build_kernel as _f
+    return _f(*a, **k)
 
 
 def _load_service(args) -> Tuple[Any, Any]:

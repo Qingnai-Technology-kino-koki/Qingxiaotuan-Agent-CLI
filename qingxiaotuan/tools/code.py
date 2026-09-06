@@ -33,8 +33,11 @@ def _indexer(ctx: ToolContext):
     ml = ctx.config("context.index_max_loc", 200_000)
     idx = CodebaseIndexer(ctx.workspace, max_files=ws, max_loc=ml)
     res = idx.build()
-    # 缓存 IndexResult 到内核服务表, 后续 codebase_map 调用直接复用, 不再重复扫描大仓库
-    ctx.kernel._services["codebase_indexer"] = res
+    # 缓存 IndexResult 到内核服务表, 后续 codebase_map 调用直接复用, 不再重复扫描大仓库。
+    # IndexerPlugin 激活时会先占位注册 codebase_indexer=None, 需先 unprovide 才能覆盖占位
+    # (否则 ServiceContainer.provide 会因"服务已被提供"抛 PluginError)。
+    ctx.kernel.unprovide("codebase_indexer")
+    ctx.kernel.provide("codebase_indexer", res)
     return res
 
 
@@ -136,6 +139,79 @@ def run_tests(ctx: ToolContext, command: str = "") -> str:
 
 def git_status(ctx: ToolContext) -> str:
     return _run(ctx, "git status --short", timeout=15) + "\n" + _run(ctx, "git diff --stat", timeout=15)
+
+
+def git_diff(ctx: ToolContext, target: str = "", staged: bool = False, stat: bool = True) -> str:
+    """查看 git 差异 (只读)。
+
+    - target 为空且 staged=False: 工作区相对暂存区的改动 (git diff)。
+    - staged=True: 暂存区相对 HEAD 的改动 (git diff --cached)。
+    - target 非空: 视作 git diff 参数, 如 "HEAD~3"、"main..HEAD"、"abc..def"。
+    """
+    if target.strip():
+        cmd = f"git diff {target.strip()}"
+        if stat:
+            cmd += " --stat"
+    elif staged:
+        cmd = "git diff --cached" + (" --stat" if stat else "")
+    else:
+        cmd = "git diff" + (" --stat" if stat else "")
+    return _run(ctx, cmd, timeout=20)
+
+
+def git_log(ctx: ToolContext, max_count: int = 20, stat: bool = False, oneline: bool = True) -> str:
+    """查看提交历史 (只读)。"""
+    try:
+        n = max(1, min(int(max_count), 200))
+    except (TypeError, ValueError):
+        n = 20
+    fmt = " --oneline" if oneline else ""
+    st = " --stat" if stat else ""
+    return _run(ctx, f"git log{fmt} -n {n}{st}", timeout=20)
+
+
+def doctor(ctx: ToolContext) -> str:
+    """自检 Agent 运行健康度: 已注册工具数/分组、当前 Loop、架构服务、模型配置。
+
+    用于排查"模型调用 / 工具不可调用"类问题 —— 不止安全模块能打, 开发代码与
+    模型链路也应可观测、可诊断。
+    """
+    lines: List[str] = []
+    # 1) 工具注册表
+    reg = ctx.kernel.get("tool_registry")
+    if reg is not None:
+        tools = list(getattr(reg, "tools", []))
+        by_group: dict = {}
+        for t in tools:
+            g = getattr(t, "group", "misc") or "misc"
+            by_group.setdefault(g, []).append(getattr(t, "name", "?"))
+        lines.append(f"已注册工具: {len(tools)} 个")
+        for g in sorted(by_group):
+            names = by_group[g]
+            shown = ", ".join(names[:12]) + (f" …(+{len(names) - 12})" if len(names) > 12 else "")
+            lines.append(f"  - {g}: {shown}")
+    else:
+        lines.append("工具注册表: 缺失 (!)")
+    # 2) 当前 Loop
+    lp = ctx.kernel.get("loop_provider")
+    lines.append(f"LoopProvider: {'已注册' if lp is not None else '缺失'} "
+                 f"({type(lp).__name__ if lp else '-'})")
+    # 3) 五层架构服务 (arch.* 是否就位)
+    arch_services = ["arch.security", "arch.execution", "arch.orchestration",
+                     "arch.context", "arch.observability"]
+    present = [s for s in arch_services if ctx.kernel.get(s) is not None]
+    lines.append(f"架构服务: {len(present)}/{len(arch_services)}"
+                 + (f" ({', '.join(present)})" if present else ""))
+    # 4) 模型配置
+    model = ctx.kernel.get("model")
+    if model is not None:
+        prov = (getattr(model, "provider", None)
+                or getattr(model, "model_name", None)
+                or type(model).__name__)
+        lines.append(f"模型: {prov}")
+    else:
+        lines.append("模型: 未在内核中 (可能延迟初始化)")
+    return "\n".join(lines)
 
 
 def _open_in_editor(fpath: Path, line: int, editor: str = "") -> str:
@@ -341,4 +417,38 @@ class CodeToolPlugin(Plugin):
                 "required": ["path"],
             },
             handler=open_file, group="code", read_only=True,
+        ))
+        registry.register(Tool(
+            name="git_diff",
+            description="查看 git 差异 (只读): 未暂存改动 / 已暂存改动(--cached) / 指定 ref 范围",
+            parameters={
+                "type": "object",
+                "properties": {
+                    "target": string_prop("git diff 参数, 如 'HEAD~3' / 'main..HEAD' / 'a..b', 留空看未暂存改动"),
+                    "staged": {"type": "boolean", "description": "true=查看已暂存改动 (git diff --cached)"},
+                    "stat": {"type": "boolean", "description": "是否附带 --stat 统计, 默认 true"},
+                },
+                "required": [],
+            },
+            handler=git_diff, group="code", read_only=True,
+        ))
+        registry.register(Tool(
+            name="git_log",
+            description="查看提交历史 (只读), 支持条数与统计",
+            parameters={
+                "type": "object",
+                "properties": {
+                    "max_count": {"type": "integer", "description": "最大条数, 默认 20, 上限 200"},
+                    "stat": {"type": "boolean", "description": "是否附带 --stat, 默认 false"},
+                    "oneline": {"type": "boolean", "description": "是否单行精简输出, 默认 true"},
+                },
+                "required": [],
+            },
+            handler=git_log, group="code", read_only=True,
+        ))
+        registry.register(Tool(
+            name="doctor",
+            description="自检 Agent 健康度: 工具数/分组、Loop、架构服务、模型配置, 排查模型调用问题",
+            parameters={"type": "object", "properties": {}, "required": []},
+            handler=doctor, group="agent", read_only=True,
         ))

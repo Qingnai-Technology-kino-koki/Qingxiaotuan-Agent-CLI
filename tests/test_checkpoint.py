@@ -100,6 +100,7 @@ def test_checkpoint_roundtrip_in_agent_loop(tmp_path, qxt_home):
     kernel = build_kernel()
     config = kernel.require("config")
     config.data["agent"]["skill_nudge_interval"] = 0
+    config.data["skills"]["auto_inject"] = False
     kernel.unprovide("model_adapter")
     model = MockModel([
         # 回合1: 写初版

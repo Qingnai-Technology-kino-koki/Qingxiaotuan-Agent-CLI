@@ -113,11 +113,11 @@ def test_decide_routes_to_vision_when_images_attached(router, patch_available):
 
 def test_decide_no_switch_when_already_optimal(router, patch_available, monkeypatch):
     # 仅 deepseek 可用, 当前就是 deepseek-chat → 无更优可切
-    monkeypatch.setattr(
-        ModelRouter, "available_provider_names", staticmethod(lambda: ["deepseek"])
-    )
+    # (decide 消费的是 available_providers 参数, 而非 available_provider_names 静态方法;
+    #  显式传入 ["deepseek"] 才能真正把候选集限制到 deepseek 一族)
     d = router.decide(
         "实现一个小工具函数", current_provider="deepseek", current_model="deepseek-chat",
+        available_providers=["deepseek"],
     )
     assert d["switch"] is False
     assert (d["provider"], d["model"]) == ("deepseek", "deepseek-chat")

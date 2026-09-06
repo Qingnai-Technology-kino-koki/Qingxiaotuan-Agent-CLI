@@ -10,13 +10,18 @@
 from __future__ import annotations
 
 import gzip
+import hashlib
 import ipaddress
+import json
+import os
 import re
 import socket
+import time
 import urllib.error
 import urllib.parse
 import urllib.request
 import zlib
+from pathlib import Path
 from typing import Optional, Union
 
 from ..core.kernel import Kernel, Plugin
@@ -191,28 +196,250 @@ def _ddg_fetch(url: str, timeout: float) -> str:
 
 
 def web_search(ctx: ToolContext, query: str, max_results: int = 5) -> str:
-    """联网搜索: DuckDuckGo HTML 版, 返回 'N. 标题/URL/摘要' 列表。"""
+    """联网搜索: DuckDuckGo HTML 版, 返回 'N. 标题/URL/摘要' 列表。
+
+    - 返回条数上限由 ``network.search_max_results`` 决定 (可配到 500);
+    - 超过一页时自动分页抓取并按 URL 去重;
+    - 每条摘要按 ``network.search_snippet_max_chars`` 截断;
+    - 按 ``network.search_top_k`` 只把最相关的 top-k 条注入上下文 (token 最小化)。
+    """
     if not isinstance(query, str) or not query.strip():
         return "[web_search] 搜索词不能为空"
+    if max_results is None:
+        max_results = ctx.config("network.search_default_results", 5)
+    cap = int(ctx.config("network.search_max_results", 500))
     try:
-        max_results = max(1, min(int(max_results), 10))
+        limit = max(1, min(int(max_results), max(1, cap)))
     except (TypeError, ValueError):
-        max_results = 5
-    timeout = float(ctx.config("tools.web.timeout", 30))
-    url = "https://html.duckduckgo.com/html/?q=" + urllib.parse.quote_plus(query)
-    try:
-        html = _ddg_fetch(url, timeout)
-    except Exception as exc:  # noqa: BLE001
-        return f"[web_search] 搜索失败 ({type(exc).__name__}): 请检查网络后重试"
-    results = parse_ddg_results(html, max_results)
+        limit = int(ctx.config("network.search_default_results", 5))
+    timeout = float(ctx.config("network.fetch_timeout", ctx.config("tools.web.timeout", 30)))
+    snippet_max = int(ctx.config("network.search_snippet_max_chars", 200))
+    top_k = int(ctx.config("network.search_top_k", 5))
+
+    results = _search_pages(ctx, query, limit, timeout, snippet_max)
+    if isinstance(results, str):
+        return results  # 所有搜索引擎首页都被网络失败拦截, 透出友好错误
     if not results:
         return f'[web_search] 未找到与 "{query}" 相关的结果'
+
+    # 相关度排序 + top-k: 采得多、注入精, 把 token 消耗压到最小。
+    if top_k > 0 and len(results) > top_k:
+        results = sorted(results, key=lambda r: _relevance_score(query, r),
+                         reverse=True)[:top_k]
+
     lines: list[str] = []
     for i, r in enumerate(results, 1):
         lines.append(f"{i}. {r['title']}\n   {r['url']}")
         if r["snippet"]:
             lines.append(f"   {r['snippet']}")
     return "\n".join(lines)
+
+
+# ----------------------------------------------------------------- 多引擎 + 磁盘缓存
+
+# Bing HTML 结果: <li class="b_algo"> 块内含 <h2><a href> 标题 与 <p> 摘要
+_BING_LI_RE = re.compile(r'<li[^>]*class="[^"]*b_algo[^"]*"[\s\S]*?</li>', re.IGNORECASE)
+_BING_A_RE = re.compile(r'<h2[^>]*>[\s\S]*?<a[^>]*href="([^"]+)"[^>]*>([\s\S]*?)</a>', re.IGNORECASE)
+_BING_P_RE = re.compile(r'<p[^>]*>([\s\S]*?)</p>', re.IGNORECASE)
+
+
+def parse_bing_results(html: str, max_results: int = 10) -> list[dict[str, str]]:
+    """从 Bing HTML 结果页提取 {title, url, snippet} (纯函数, 便于离线测试)。"""
+    out: list[dict[str, str]] = []
+    for li in _BING_LI_RE.findall(html):
+        m = _BING_A_RE.search(li)
+        ms = _BING_P_RE.search(li)
+        snippet = _strip_tags(ms.group(1)) if ms else ""
+        if m:
+            href, title = m.group(1), _strip_tags(m.group(2))
+            if not title or href.startswith(("javascript:", "/")):
+                continue
+            out.append({"title": title, "url": href, "snippet": snippet})
+        elif snippet:  # 无标题但有摘要, 保底仍给出一条
+            out.append({"title": "", "url": "", "snippet": snippet})
+        if len(out) >= max_results:
+            break
+    return out
+
+
+def _cache_dir(ctx) -> Optional[Path]:
+    """解析磁盘缓存目录 (可配, 默认 ~/.qingxiaotuan/cache/web; 设为空字符串禁用)。"""
+    cfg = ctx.config("network.search_cache_dir", "~/.qingxiaotuan/cache/web")
+    if not cfg:
+        return None
+    try:
+        return Path(os.path.expanduser(cfg))
+    except Exception:  # noqa: BLE001
+        return None
+
+
+def _cache_key(query: str, limit: int, engine: str) -> str:
+    raw = f"{engine}\0{query.strip().lower()}\0{limit}"
+    return hashlib.sha1(raw.encode("utf-8")).hexdigest()
+
+
+def _cache_load(ctx, query: str, limit: int, engine: str, ttl: float,
+                snippet_max: int) -> Optional[list[dict[str, str]]]:
+    cd = _cache_dir(ctx)
+    if cd is None or not ctx.config("network.search_cache", True):
+        return None
+    try:
+        p = cd / f"{_cache_key(query, limit, engine)}.json"
+        if not p.is_file():
+            return None
+        data = json.loads(p.read_text(encoding="utf-8"))
+        if time.time() - float(data.get("ts", 0)) > ttl:
+            return None
+        results = data.get("results", [])
+        for r in results:
+            r["snippet"] = _truncate(r.get("snippet", ""), snippet_max)
+        return results
+    except Exception:  # noqa: BLE001 - 缓存损坏/不可读不影响主流程
+        return None
+
+
+def _cache_store(ctx, query: str, limit: int, engine: str,
+                 results: list[dict[str, str]]) -> None:
+    cd = _cache_dir(ctx)
+    if cd is None or not results or not ctx.config("network.search_cache", True):
+        return
+    try:
+        cd.mkdir(parents=True, exist_ok=True)
+        p = cd / f"{_cache_key(query, limit, engine)}.json"
+        tmp = p.with_name(p.name + f".tmp{os.getpid()}")
+        tmp.write_text(json.dumps(
+            {"ts": time.time(), "query": query, "results": results},
+            ensure_ascii=False), encoding="utf-8")
+        os.replace(tmp, p)
+    except Exception:  # noqa: BLE001 - 缓存写入失败绝不影响搜索
+        try:
+            tmp.unlink(missing_ok=True)
+        except Exception:  # noqa: BLE001
+            pass
+
+
+def _collect_pages(ctx, query: str, engine: str, base: str, limit: int,
+                   timeout: float, snippet_max: int, parse_fn, per_page: int,
+                   page_param: str, step: int) -> "list[dict[str, str]] | str":
+    """分页抓取单个搜索引擎的结果并按 URL 去重, 直到凑够 ``limit`` 条或触发页数上限。
+
+    首页抓取失败返回错误字符串, 后续分页失败则用已收集的结果继续。
+    """
+    max_pages = int(ctx.config("network.search_max_pages", 25))
+    results: list[dict[str, str]] = []
+    seen: set[str] = set()
+    start = 0
+    for _ in range(max_pages):
+        if len(results) >= limit:
+            break
+        url = f"{base}&{page_param}={start}" if start else base
+        try:
+            html = _ddg_fetch(url, timeout)
+        except Exception as exc:  # noqa: BLE001
+            if not results:
+                return f"[web_search] 搜索失败 ({engine}: {type(exc).__name__})"
+            break
+        new = 0
+        for r in parse_fn(html, per_page):
+            u = r.get("url", "")
+            if not u or u in seen:
+                continue
+            seen.add(u)
+            r["snippet"] = _truncate(r.get("snippet", ""), snippet_max)
+            results.append(r)
+            new += 1
+        if new == 0:
+            break  # 无新结果 (失效页/内容重复), 停止分页
+        start += step
+    return results[:limit]
+
+
+def _engine_duckduckgo(ctx, query: str, limit: int, timeout: float,
+                       snippet_max: int) -> "list[dict[str, str]] | str":
+    ttl = float(ctx.config("network.search_cache_ttl", 21600))
+    cached = _cache_load(ctx, query, limit, "duckduckgo", ttl, snippet_max)
+    if cached is not None:
+        return cached
+    base = "https://html.duckduckgo.com/html/?q=" + urllib.parse.quote_plus(query)
+    out = _collect_pages(ctx, query, "duckduckgo", base, limit, timeout,
+                         snippet_max, parse_ddg_results, 20, "start", 20)
+    if isinstance(out, list) and out:
+        _cache_store(ctx, query, limit, "duckduckgo", out)
+    return out
+
+
+def _engine_bing(ctx, query: str, limit: int, timeout: float,
+                 snippet_max: int) -> "list[dict[str, str]] | str":
+    ttl = float(ctx.config("network.search_cache_ttl", 21600))
+    cached = _cache_load(ctx, query, limit, "bing", ttl, snippet_max)
+    if cached is not None:
+        return cached
+    base = ("https://www.bing.com/search?q=" + urllib.parse.quote_plus(query)
+            + "&count=10")
+    out = _collect_pages(ctx, query, "bing", base, limit, timeout,
+                         snippet_max, parse_bing_results, 10, "first", 10)
+    if isinstance(out, list) and out:
+        _cache_store(ctx, query, limit, "bing", out)
+    return out
+
+
+_ENGINE_FNS = {
+    "duckduckgo": _engine_duckduckgo,
+    "bing": _engine_bing,
+}
+_DEFAULT_ENGINES = ["duckduckgo", "bing"]
+
+
+def _search_pages(ctx, query: str, limit: int, timeout: float,
+                  snippet_max: int) -> "list[dict[str, str]] | str":
+    """按 ``network.search_engines`` 顺序尝试各引擎, 主引擎失败自动切换下一个。
+
+    - 某引擎硬失败 (首页网络错误) 就换下一个;
+    - 某引擎返回空结果也换下一个 (别的源可能有);
+    - 全部硬失败 → 把首个错误透出; 全部空 → 返回 [] (由上层报「未找到」)。
+    """
+    engines = ctx.config("network.search_engines", _DEFAULT_ENGINES)
+    if isinstance(engines, str):
+        engines = [e.strip() for e in re.split(r"[,;\s]+", engines) if e.strip()]
+        engines = engines or _DEFAULT_ENGINES
+    hard_err = ""
+    for eng in engines:
+        fn = _ENGINE_FNS.get(eng)
+        if not fn:
+            continue
+        out = fn(ctx, query, limit, timeout, snippet_max)
+        if isinstance(out, str):      # 引擎级硬失败
+            hard_err = hard_err or out
+            continue
+        if out:                       # 命中结果
+            return out
+        hard_err = ""                 # 该引擎返回空 → 重置首错, 尝试下一个
+    return hard_err or []
+
+
+def _truncate(text: str, max_chars: int) -> str:
+    """把摘要/正文截到 ``max_chars`` 内, 控制进入上下文的 token 量。"""
+    if not text or max_chars <= 0 or len(text) <= max_chars:
+        return text
+    return text[:max_chars].rstrip() + "…"
+
+
+def _relevance_score(query: str, r: dict[str, str]) -> int:
+    """轻量相关度: 统计 query 分词在标题/URL/摘要里出现的次数 (越大越相关)。"""
+    q_words = [w for w in re.split(r"\W+", query.lower()) if w]
+    if not q_words:
+        return 0
+    haystack = " ".join([r.get("title", ""), r.get("url", ""),
+                         r.get("snippet", "")]).lower()
+    score = 0
+    for w in q_words:
+        if w in r.get("title", "").lower():
+            score += 3
+        if w in r.get("snippet", "").lower():
+            score += 2
+        if w in haystack:
+            score += 1
+    return score
 
 
 def web_fetch(ctx: ToolContext, url: str) -> str:
@@ -267,8 +494,9 @@ def web_fetch(ctx: ToolContext, url: str) -> str:
     text = _TAG_RE.sub(" ", text)
     text = _HTML_RE.sub(" ", text)
     text = re.sub(r"\s+", " ", text).strip()
-    if len(text) > MAX_PAGE:
-        text = text[:MAX_PAGE] + "...[截断]"
+    max_fetch = int(ctx.config("network.fetch_max_chars", MAX_PAGE))
+    if max_fetch > 0 and len(text) > max_fetch:
+        text = text[:max_fetch] + "...[截断]"
     return text or "(页面为空)"
 
 
@@ -293,12 +521,12 @@ class WebPlugin(Plugin):
         ))
         registry.register(Tool(
             name="web_search",
-            description="联网搜索 (DuckDuckGo), 返回标题/URL/摘要列表",
+            description="联网搜索 (DuckDuckGo), 返回标题/URL/摘要 (自动分页+去重+相关度top-k)",
             parameters={
                 "type": "object",
                 "properties": {
                     "query": string_prop("搜索关键词"),
-                    "max_results": {"type": "integer", "description": "返回条数 (1-10, 默认 5)"},
+                    "max_results": {"type": "integer", "description": "返回条数 (1-500, 默认 5)"},
                 },
                 "required": ["query"],
             },

@@ -77,28 +77,6 @@ _BUILTIN_TYPES: List[AgentType] = [
 ]
 
 
-def get_agent_type(name: str) -> Optional[AgentType]:
-    """按名字取内置类型; 未知返回 None (由调用方报错)。"""
-    for t in _BUILTIN_TYPES:
-        if t.name == name:
-            return t
-    return None
-
-
-def type_names() -> List[str]:
-    """全部内置类型名 (用作 task 工具参数的 enum)。"""
-    return [t.name for t in _BUILTIN_TYPES]
-
-
-def render_types_for_prompt() -> str:
-    """渲染成给模型看的类型清单 (拼进 task 工具 description 与错误提示)。"""
-    lines = []
-    for t in _BUILTIN_TYPES:
-        tag = ", 只读" if t.read_only else ""
-        lines.append(f"- {t.name}{tag}: {t.description}")
-    return "\n".join(lines)
-
-
 def readonly_tool_names(registry: "ToolRegistry") -> List[str]:
     """收集注册表里「非只读」的工具名, 用作 read_only 类型的 exclude_tools。
 

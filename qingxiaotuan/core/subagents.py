@@ -92,10 +92,11 @@ class SubAgentPool:
         self.main_agent = main_agent
         self.confirm = confirm
         self.exclude_tools = tuple(exclude_tools)
-        # 并发度: 默认 5, 可由配置 agent.subagent_max_workers 覆盖
+        # 并发度: 默认 5, 硬上限 5 (民用电脑带不动更多)
+        # 可由配置 agent.subagent_max_workers 覆盖, 但不超过 5
         if max_workers is None:
             max_workers = int(config.get("agent.subagent_max_workers", 5))
-        self.max_workers = max(1, min(max_workers, 16))
+        self.max_workers = max(1, min(max_workers, 5))
         self.default_timeout = default_timeout
         # isolation: "process" = 进程级沙箱隔离 (生产级, 默认); "thread" = 软隔离 (兼容/无 subprocess)
         self.isolation = isolation if isolation in ("process", "thread") else "process"

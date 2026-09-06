@@ -156,3 +156,89 @@ def test_empty_rules_keep_default_behavior():
     policy = PermissionPolicy(None)
     assert policy.rules == ()
     assert policy.match_rule("anything", {}) is None
+
+
+# ================================================================= 生产默认接线 (端到端)
+# 真实生产路径是: policy = ctx.permissions or build_permission_policy(cfg)
+# 上面测试都手动注入 policy; 下面验证"未注入时经默认工厂 build_permission_policy"
+# 的 rules 是否真正落到执行决策 (allow/ask/deny 三条)。
+
+class _DictCfg:
+    """dict 风格配置桩: 只回答 permissions.rules / permissions.shell / 开关。"""
+
+    def __init__(self, config):
+        self._data = config
+
+    def get(self, key, default=None):
+        return self._data.get(key, default)
+
+
+class _KernelWithCfg:
+    def __init__(self, cfg):
+        self._cfg = cfg
+
+    def get(self, key):
+        if key == "config":
+            return self._cfg
+        return None
+
+
+from qingxiaotuan.tools.permission_fusion import build_permission_policy
+
+
+def _make_ctx(config, *, yolo=False, confirm_calls=None):
+    def _confirm(prompt):
+        if confirm_calls is not None:
+            confirm_calls.append(prompt)
+        return False  # 恒拒, 断言确实走了确认
+
+    policy = build_permission_policy(_DictCfg(config))  # 用生产默认工厂
+    return ToolContext(kernel=_KernelWithCfg(_DictCfg(config)), workspace=".",
+                       yolo=yolo, confirm=_confirm, permissions=policy)
+
+
+def test_default_factory_deny_rule_blocks_end_to_end():
+    reg = _reg()
+    ctx = _make_ctx({"permissions.rules": [{"tool": "deploy_tool", "action": "deny"}]})
+    result = reg.dispatch_result("deploy_tool", "{}", ctx)
+    assert result.status == "denied"
+    assert "permissions.rules" in result.content  # 拒绝理由明确指向规则表
+
+
+def test_default_factory_ask_rule_forces_confirm_end_to_end():
+    reg = _reg()
+    calls = []
+    ctx = _make_ctx({"permissions.rules": [{"tool": "deploy_tool", "action": "ask"}]},
+                    yolo=True, confirm_calls=calls)  # 即便 YOLO
+    result = reg.dispatch_result("deploy_tool", "{}", ctx)
+    assert result.status == "denied"
+    assert len(calls) == 1  # 确实走进确认
+
+
+def test_default_factory_allow_rule_auto_approves_dangerous_end_to_end():
+    reg = _reg()
+    calls = []
+    ctx = _make_ctx({"permissions.rules": [{"tool": "deploy_tool", "action": "allow"}]},
+                    confirm_calls=calls)
+    result = reg.dispatch_result("deploy_tool", "{}", ctx)
+    assert result.status == "ok"
+    assert calls == []  # 明确 allow → 免确认自动批准
+
+
+def test_default_factory_rule_pattern_miss_falls_back():
+    reg = _reg()
+    calls = []
+    ctx = _make_ctx({"permissions.rules": [{"tool": "run_shell", "pattern": "git *",
+                                            "action": "allow"}]},
+                    confirm_calls=calls)
+    # 规则 pattern 未命中 → 回落危险工具默认确认
+    result = reg.dispatch_result("run_shell", json.dumps({"command": "rm -rf build"}), ctx)
+    assert result.status == "denied"
+    assert len(calls) == 1
+
+
+def test_build_permission_policy_always_wraps():
+    # 工厂始终返回 FusionPermissionPolicy, 敏感文件检测始终生效
+    policy = build_permission_policy(None)
+    from qingxiaotuan.tools.permission_fusion import FusionPermissionPolicy
+    assert isinstance(policy, FusionPermissionPolicy)

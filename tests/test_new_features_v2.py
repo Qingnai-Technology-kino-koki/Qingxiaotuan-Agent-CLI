@@ -258,14 +258,28 @@ class TestManagedSettings:
         config = ms.merge(project_dir=project)
         assert config.get("model", {}).get("provider") == "project-provider"
 
-    def test_env_settings(self, tmp_path):
-        os.environ["QXT_MODEL_PROVIDER"] = "env-provider"
-        try:
-            ms = ManagedSettings(tmp_path)
-            config = ms.merge()
-            assert config.get("model", {}).get("provider") == "env-provider"
-        finally:
-            del os.environ["QXT_MODEL_PROVIDER"]
+    def test_env_settings(self, tmp_path, monkeypatch):
+        monkeypatch.setenv("QXT_MODEL_PROVIDER", "env-provider")
+        ms = ManagedSettings(tmp_path)
+        config = ms.merge()
+        assert config.get("model", {}).get("provider") == "env-provider"
+
+    def test_merge_does_not_mutate_global_defaults(self, tmp_path, monkeypatch):
+        """回归测试: merge() 不得就地污染全局 DEFAULT_CONFIG。
+
+        旧实现中 _deep_merge 会把 result 的嵌套 dict 与 DEFAULT_CONFIG 共享
+        引用, 高优先级 (环境变量) 合并时会把 DEFAULT_CONFIG['model']['provider']
+        永久改成 'env-provider', 从而污染后续所有 Config() 实例 (曾导致
+        test_plan_execute / test_router 的自动路由测试跨文件污染而失败)。
+        """
+        from qingxiaotuan.config.defaults import DEFAULT_CONFIG
+        original = DEFAULT_CONFIG["model"]["provider"]
+        monkeypatch.setenv("QXT_MODEL_PROVIDER", "env-provider")
+        ms = ManagedSettings(tmp_path)
+        config = ms.merge()
+        assert config.get("model", {}).get("provider") == "env-provider"
+        # 关键不变量: 全局默认值必须保持不变
+        assert DEFAULT_CONFIG["model"]["provider"] == original
 
     def test_get_dotted_path(self, tmp_path):
         ms = ManagedSettings(tmp_path)
@@ -398,3 +412,18 @@ class TestTelemetryCollector:
         tc.add_span_event(span.span_id, "cache_hit", {"key": "test"})
         assert len(span.events) == 1
         assert span.events[0]["name"] == "cache_hit"
+
+    def test_auto_export_threshold(self, tmp_path):
+        """span 数达到阈值时应触发自动导出。"""
+        tc = TelemetryCollector(tmp_path)
+        # 未达阈值
+        assert tc.should_auto_export() is False
+        # 灌入足够 span — finish_span 会在达到阈值时自动调用 auto_export()
+        for _ in range(tc._AUTO_EXPORT_THRESHOLD):
+            s = tc.start_span("test")
+            tc.finish_span(s.span_id)
+        # finish_span 内部已触发 auto_export (导出一半), 剩余 < 阈值
+        assert tc.should_auto_export() is False
+        # 手动再次调用应导出剩余 span
+        exported = tc.auto_export()
+        assert exported >= 0

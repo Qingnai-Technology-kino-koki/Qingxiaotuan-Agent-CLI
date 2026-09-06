@@ -139,15 +139,13 @@ def _ask_user_handler(ctx: ToolContext, question: Any = "", options: Any = None,
 
     import sys
     if sys.stdin.isatty() and sys.stdout.isatty():
-        from rich.console import Console
-        console = Console()
-        console.print(f"\n[bold cyan]?[/] [bold]{q}[/]")
+        print(f"\n? {q}")
         if opts:
             for i, o in enumerate(opts, 1):
-                console.print(f"  [cyan]{i}.[/] {o}")
-            console.print("[dim](输入编号或自由作答; Ctrl+C 跳过)[/]")
+                print(f"  {i}. {o}")
+            print("(输入编号或自由作答; Ctrl+C 跳过)")
         else:
-            console.print("[dim](自由作答; Ctrl+C 跳过)[/]")
+            print("(自由作答; Ctrl+C 跳过)")
         try:
             raw = input("> ").strip()
         except (EOFError, KeyboardInterrupt):

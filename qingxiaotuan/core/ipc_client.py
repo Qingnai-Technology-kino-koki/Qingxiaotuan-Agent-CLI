@@ -66,7 +66,9 @@ class IpcClient:
         self._read_thread = threading.Thread(target=self._read_loop, daemon=True)
         self._read_thread.start()
 
-        if not self._ready.wait(timeout=5.0):
+        # 就绪窗口放宽到 30s: 重型引擎首次 spawn 时 (pyc 编译 + 杀软扫描) 可能
+        # 超过 5s; 过短的窗口会让冷启动的 `qxt ext call` / 教程演示误报 "未就绪"。
+        if not self._ready.wait(timeout=30.0):
             raise IpcError(f"Engine {self.engine_name} did not become ready")
 
         return self

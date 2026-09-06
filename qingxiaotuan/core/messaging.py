@@ -1,4 +1,10 @@
-"""Cross-Session Messaging — 跨会话消息通信 (对标 Claude Code 2.1.239 SendMessage / ListAgents)。
+"""Cross-Session Messaging — [已弃用] 请使用 core.message_bus。
+
+.. deprecated:: 0.2.015
+    此模块已弃用, 生产代码请使用 core.message_bus (更简单、已被 tools/messaging_tool.py 使用)。
+    此处保留仅供 test_new_features_v2.py 的向后兼容测试。
+
+跨会话消息通信 (对标 Claude Code 2.1.239 SendMessage / ListAgents)。
 
 核心概念:
 - 每个 Agent 会话有一个唯一 session_id 和可选的 session_name

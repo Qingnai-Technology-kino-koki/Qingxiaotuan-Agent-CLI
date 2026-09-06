@@ -1,6 +1,9 @@
 """外部能力引擎集成 - 纯 Python 引擎
 
-引擎通过进程内直调与内核对话 (零 IPC 开销)。
+引擎调用统一经 core/engine_isolation.EngineIsolation 路由:
+- 判定类引擎(safety)永远进程内直调(fail-closed, 结果直接决定放行/拦截);
+- 默认(engine.isolation=false)全部进程内直调, 与历史行为一致;
+- 开启隔离后非判定类引擎走 JSONL 子进程, 子进程崩溃/超时安全回落进程内。
 """
 import json
 import logging
@@ -8,15 +11,12 @@ import os
 from typing import Any, Dict, Optional, cast
 
 from ..core.kernel import Kernel, Plugin
-from ..ext.registry import get_engine, ENGINE_MAP
 from .base import Tool, ToolContext
-
-# 引擎实例缓存: 同一引擎只实例化一次, 避免重复创建
-_ENGINE_INSTANCES: Dict[str, Any] = {}
 
 logger = logging.getLogger(__name__)
 
-# 索引缓存: ext_index_build 的结果供 ext_index_query 复用 (进程内)
+# 索引缓存: ext_index_build 的结果供 ext_index_query 复用 (进程内)。
+# 按工作区隔离, 避免切换工作区后查到上一个工作区残留的旧索引 (stale)。
 _INDEX_CACHE: Dict[str, Any] = {}
 
 
@@ -36,41 +36,22 @@ def _fmt(result: Any) -> str:
     return json.dumps(result, ensure_ascii=False, indent=2)
 
 
-def _get_engine(name: str) -> Any:
-    """获取或缓存引擎实例 (进程内直调, 零 IPC 开销)。"""
-    if name not in _ENGINE_INSTANCES:
-        _ENGINE_INSTANCES[name] = get_engine(name)
-    return _ENGINE_INSTANCES[name]
-
-
 def _call(engine: str, method: str, params: dict, timeout: int = 30) -> Any:
-    """进程内直调引擎方法, 返回结构化结果; 失败返回 {"error": ...} 而非抛异常。
+    """通过引擎隔离路由器调用引擎方法, 返回结构化结果; 失败返回 {"error": ...}。
+
+    路由决策由 core/engine_isolation.EngineIsolation 负责:
+    - 判定类引擎(safety)永远进程内(fail-closed);
+    - 默认(engine.isolation=false)全部进程内直调, 与历史行为一致;
+    - 开启隔离后非判定类引擎走 JSONL 子进程, 失败安全回落进程内。
 
     兼容两种引擎接口:
-    1. methods 字典模式 (safety/crypto/diff/ansi/index/json/search/notify): instance.methods[method](params)
-    2. handle(line) IPC 协议模式 (rules/skill-market): 通过 JSONL 协议转发
+    1. methods 字典模式 (safety): instance.methods[method](params)
+    2. handle(line) IPC 协议模式 (其余引擎)
     """
     try:
-        instance = _get_engine(engine)
-        # 模式1: methods 字典 (推荐, 最高效)
-        methods_dict = getattr(instance, 'methods', None)
-        if isinstance(methods_dict, dict):
-            handler = methods_dict.get(method)
-            if handler is None:
-                return {"error": f"引擎 {engine} 未知方法: {method}"}
-            return handler(params)
-        # 模式2: handle(line) IPC 协议兼容 (rules/skill-market)
-        handle_fn = getattr(instance, 'handle', None)
-        if callable(handle_fn):
-            import json as _json
-            req = {"id": 1, "method": method, "params": params}
-            resp_str = handle_fn(_json.dumps(req, ensure_ascii=False))
-            resp = _json.loads(resp_str)
-            if resp.get("ok"):
-                return resp.get("result")
-            else:
-                return {"error": resp.get("error", f"引擎 {engine} 方法 {method} 失败")}
-        return {"error": f"引擎 {engine} 无可用接口 (无 methods 字典或 handle 方法)"}
+        from ..core.engine_isolation import get_isolation
+
+        return get_isolation().call(engine, method, params, timeout=timeout)
     except Exception as exc:  # noqa: BLE001
         return {"error": f"{type(exc).__name__}: {exc}"}
 
@@ -142,14 +123,17 @@ def _index_build(ctx, root: str) -> str:
     res = _call("index", "index", {"paths": paths})
     if isinstance(res, dict) and "indexed" in res:
         symbols = sorted({s for item in res["indexed"] for s in item.get("symbols", [])})
-        _INDEX_CACHE["data"] = res["indexed"]
+        # 按工作区隔离缓存, 防止跨工作区查到旧索引
+        _INDEX_CACHE[ctx.workspace or ""] = res["indexed"]
         return _fmt({"files": [item["path"] for item in res["indexed"]],
                      "symbols": symbols, "ok": True, "count": len(res["indexed"])})
     return _fmt(res)
 
 
 def _index_query(ctx, symbol: str) -> str:
-    res = _call("index", "search", {"query": symbol, "index": _INDEX_CACHE.get("data", [])})
+    ws = ctx.workspace or ""
+    data = _INDEX_CACHE.get(ws, [])
+    res = _call("index", "search", {"query": symbol, "index": data})
     return _fmt(res)
 
 
@@ -168,8 +152,6 @@ def _rules_check(ctx, path: str, content: str) -> str:
     return _fmt(_call("rules", "check", {"path": path, "content": content}))
 
 
-def _skill_search(ctx, query: str) -> str:
-    return _fmt(_call("skill-market", "search", {"query": query}))
 
 
 def _json_pointer(ctx, doc: Any, pointer: str) -> str:
@@ -372,18 +354,6 @@ class ExternalToolsPlugin(Plugin):
                     "required": ["path", "content"],
                 },
                 handler=_rules_check,
-            ),
-            Tool(
-                name="ext_skill_search",
-                description="在技能市场 registry 里搜索技能",
-                parameters={
-                    "type": "object",
-                    "properties": {
-                        "query": {"type": "string", "description": "查询词"},
-                    },
-                    "required": ["query"],
-                },
-                handler=_skill_search,
             ),
             Tool(
                 name="ext_json_pointer",

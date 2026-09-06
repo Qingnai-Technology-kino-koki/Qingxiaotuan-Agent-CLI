@@ -176,12 +176,19 @@ class AnthropicAdapter(ModelAdapter):
                         if block.get("type") == "tool_use":
                             tool_id = block.get("id", "")
                             tool_name = block.get("name", "")
-                            tool_input = json.dumps(block.get("input", {}), ensure_ascii=False)
-                    elif event == "content_block_stop" and tool_name:
-                        calls.append(ToolCall(id=tool_id, name=tool_name,
-                                              arguments=tool_input or "{}"))
-                        tool_id = tool_name = tool_input = ""
+                            # 关键修复: 不要从 block.input 初始化 tool_input。
+                            # Anthropic 在 content_block_start 时 input 恒为 {}, 真正的
+                            # 参数通过后续 input_json_delta 的 partial_json 流式拼接而来。
+                            # 若此处预置 "{}" 再追加 partial_json, 会得到 "{}{...}" 这种
+                            # 非法 JSON, 导致 tool_calls 的参数在下流 json.loads 时损坏/丢失。
+                            tool_input = ""
+                    elif event == "content_block_stop":
+                        if tool_name:
+                            calls.append(ToolCall(id=tool_id, name=tool_name,
+                                                  arguments=tool_input or "{}"))
+                            tool_id = tool_name = tool_input = ""
                     elif event == "message_delta":
                         usage.update(data.get("usage", {}) or {})
-        return ModelResponse(content="".join(parts), usage={k: int(v) for k, v in usage.items()
-                              if isinstance(v, (int, float))})
+        return ModelResponse(content="".join(parts), tool_calls=calls,
+                             usage={k: int(v) for k, v in usage.items()
+                                    if isinstance(v, (int, float))})

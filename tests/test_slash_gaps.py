@@ -57,6 +57,40 @@ def test_slash_status_summary(tmp_path, qxt_home, capsys):
     assert "上下文" in out
 
 
+def test_slash_status_resilience_default_disabled(tmp_path, qxt_home, capsys):
+    """/status 默认展示韧性三道防线均为未启用。"""
+    from qingxiaotuan.cli.commands import _handle_slash
+    agent = _build_agent(tmp_path, qxt_home)
+    config = agent.config
+    assert _handle_slash("/status", agent, config, str(tmp_path)) is True
+    out = capsys.readouterr().out
+    assert "韧性" in out
+    assert "熔断" in out and "未启用" in out
+    assert "限流" in out and "未启用" in out
+    assert "重试" in out
+    # 默认未启用时不暴露任何熔断细节
+    assert "open" not in out and "已熔断" not in out
+
+
+def test_slash_status_resilience_breaker_closed_and_open(tmp_path, qxt_home, capsys):
+    """/status 在熔断器开启时展示 closed (正常) 与 open (已熔断) 两种态。"""
+    from qingxiaotuan.cli.commands import _handle_slash
+    from qingxiaotuan.core.retry import CircuitBreaker
+    agent = _build_agent(tmp_path, qxt_home)
+    config = agent.config
+    # 启用熔断 (默认已 closed)
+    agent._circuit_breaker = CircuitBreaker(
+        failure_threshold=3, cooldown=20, success_threshold=1, enabled=True)
+    assert _handle_slash("/status", agent, config, str(tmp_path)) is True
+    out = capsys.readouterr().out
+    assert "已启用" in out and "正常" in out and "closed" in out
+    # 手动熔断 -> open
+    agent._circuit_breaker.trip()
+    assert _handle_slash("/status", agent, config, str(tmp_path)) is True
+    out = capsys.readouterr().out
+    assert "已熔断" in out and "open" in out
+
+
 def test_slash_budget_view_and_set(tmp_path, qxt_home, capsys):
     """/budget 无参查看, 有参写入 router.budget_limit。"""
     from qingxiaotuan.cli.commands import _handle_slash
@@ -117,3 +151,61 @@ def test_parser_registers_usercmd():
     ns = parser.parse_args(["usercmd", "list"])
     assert ns.func == "cmd_usercmd"
     assert ns.usercmd_cmd == "list"
+
+
+def _build_agent_telemetry(tmp_path, qxt_home):
+    """构造一个开启 observability.telemetry 的 Agent (其余配置同 _build_agent)。"""
+    kernel = build_kernel()
+    config = kernel.require("config")
+    config.data.setdefault("observability", {})["telemetry"] = {"enabled": True}
+    config.data["agent"]["skill_nudge_interval"] = 999  # 测试中不许技能蒸馏打断 run()
+    kernel.unprovide("model_adapter")
+    kernel.provide("model_adapter", MockModel(()), owner="test")
+    return Agent(kernel=kernel, config=config, workspace=str(tmp_path), confirm=lambda _p: True)
+
+
+def test_agent_creates_telemetry_when_enabled(tmp_path, qxt_home):
+    """observability.telemetry.enabled=true 时, Agent 自动创建 TelemetryCollector。"""
+    agent = _build_agent_telemetry(tmp_path, qxt_home)
+    assert agent._telemetry is not None
+    assert agent._telemetry_trace  # 会话级 trace_id 已生成
+
+
+def test_agent_no_telemetry_by_default(tmp_path, qxt_home):
+    """默认不开启 telemetry, Agent._telemetry 为 None (零行为影响)。"""
+    agent = _build_agent(tmp_path, qxt_home)
+    assert agent._telemetry is None
+
+
+def test_slash_stats_disabled_message(tmp_path, qxt_home, capsys):
+    """未启用 telemetry 时, /stats 提示如何开启而非报错。"""
+    from qingxiaotuan.cli.commands import _handle_slash
+    agent = _build_agent(tmp_path, qxt_home)
+    config = agent.config
+    assert _handle_slash("/stats", agent, config, str(tmp_path)) is True
+    out = capsys.readouterr().out
+    assert "未启用" in out
+    assert "observability.telemetry.enabled" in out
+
+
+def test_slash_stats_shows_run_metrics(tmp_path, qxt_home, capsys):
+    """开启 telemetry 后跑一轮, /stats 能展示累积的 span 与指标。"""
+    from qingxiaotuan.cli.commands import _handle_slash
+    from qingxiaotuan.models.base import ModelResponse
+    agent = _build_agent_telemetry(tmp_path, qxt_home)
+    config = agent.config
+    # 一次带 usage 的模型响应, 无 tool_calls → run 一轮即返回
+    agent.model.script = [ModelResponse(
+        content="done", tool_calls=[], usage={"prompt_tokens": 12, "completion_tokens": 6})]
+    answer = agent.run("hi")
+    assert answer == "done"
+    # telemetry 已收集到至少一次模型调用 span
+    stats = agent._telemetry.get_stats()
+    assert stats["total_spans"] >= 1
+    assert stats["total_traces"] >= 1
+
+    assert _handle_slash("/stats", agent, config, str(tmp_path)) is True
+    out = capsys.readouterr().out
+    assert "可观测性" in out
+    assert "模型调用" in out
+    assert "工具调用" in out

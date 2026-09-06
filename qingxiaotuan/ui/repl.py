@@ -1,4 +1,4 @@
-"""UI - DeepSeek style terminal workspace."""
+"""UI - 青小团终端交互界面 (圆角蓝框 + 吉祥物)。"""
 
 from __future__ import annotations
 
@@ -14,8 +14,9 @@ from rich.text import Text
 
 from .mascot import Mascot, IDLE
 from .plain_console import console as _plain_console
-from .theme import C, MASCOT_ICONS, blank_pt_style, context_bar, context_style
+from .theme import C, blank_pt_style, context_bar, context_style
 from ..i18n import t
+from .. import __version__ as _PKG_VERSION
 
 _HAS_PT = False
 try:
@@ -35,7 +36,7 @@ log = logging.getLogger(__name__)
 _SLASH_COMMANDS = [
     "/help", "/tools", "/skills", "/memory", "/usage", "/cost", "/compact",
     "/context", "/clear", "/more", "/model", "/effort", "/mode", "/plan",
-    "/resume", "/swarm", "/route", "/diff", "/undo", "/impact", "/mcp",
+    "/goal", "/blast", "/sandbox", "/offline", "/audit", "/resume", "/swarm", "/route", "/diff", "/undo", "/impact", "/mcp",
     "/hooks", "/image", "/images", "/clear-images", "/exit", "/quit",
 ]
 
@@ -55,38 +56,17 @@ def _fmt_tokens(n: int) -> str:
     return str(n)
 
 
-def _banner_lines(cwd: str, session: str, model: str, version: str) -> list:
-    """qingxiaotuan 式启动横幅: 块状 logo + 欢迎 + Directory/Session/Model/Version 标签。
-
-    标签宽度按当前语言动态对齐 (翻译后长度不一)。
-    """
-    labels = [t("banner.directory"), t("banner.session"),
-              t("banner.model"), t("banner.version")]
-    w = max(len(label) for label in labels)
-    return [
-        "",
-        "  ▐█▛█▛█▌  " + t("banner.welcome"),
-        "  ▐█████▌  " + t("banner.help_hint"),
-        "",
-        f"  {(labels[0] + ':').ljust(w + 1)} {cwd}",
-        f"  {(labels[1] + ':').ljust(w + 1)} {session}",
-        f"  {(labels[2] + ':').ljust(w + 1)} {model}",
-        f"  {(labels[3] + ':').ljust(w + 1)} {version}",
-        "",
-    ]
-
-
 def _tip_lines(session: str = "No session yet") -> list:
-    """横幅下方的提示区 (对标 qingxiaotuan 的 Web UI 引导)。"""
+    """横幅下方的提示区 (Kimi-Code 风格: 蓝色 ✦ 引导 + 灰色说明)。"""
     lines = [
-        "",
-        "  " + t("tip.fullscreen"),
-        "    " + t("tip.fullscreen_cmd"),
+        Text(""),
+        Text("✦ ", style=C["accent"]) + Text(t("tip.fullscreen"), style=C["accent"]),
+        Text("  " + t("tip.fullscreen_cmd"), style=C["dim"]),
     ]
     if not session or session == "No session yet":
-        lines.append("")
-        lines.append("    " + t("tip.no_session"))
-    lines.append("")
+        lines.append(Text(""))
+        lines.append(Text("  " + t("tip.no_session"), style=C["dim"]))
+    lines.append(Text(""))
     return lines
 
 
@@ -101,7 +81,7 @@ class UI:
         self._cwd = os.getcwd()
         self._session_name = "No session yet"
         self._model = "not set, run /login or /provider"
-        self._version = "0.01"
+        self._version = _PKG_VERSION
         self._context_pct = 0.0
         self._ctx_pct = 0.0
         self._ctx_used = 0
@@ -132,19 +112,58 @@ class UI:
             return False
 
     def render_banner(self) -> None:
-        lines = _banner_lines(self._cwd, self._session_name, self._model, self._version)
+        """青小团启动横幅 (原始 box-art 风格, 吉祥物保持原样不动)。
+
+        结构: 吉祥物 (原始 box-art) + 欢迎/帮助文案, 空行分隔, 4 行信息
+        (Directory / Session / Model / Version)。输入框与状态栏由 prompt() /
+        status_bar() 单独渲染, 不在此处。
+        """
         console = self.console
         width = console.width or 100
         inner = max(1, width - 2)
-        console.print(Text("╭" + "─" * inner + "╮", style=C["box"]))
-        for i, line in enumerate(lines):
-            pad = max(1, width - _disp_width(line) - 2)
-            # logo 与欢迎行用主强调色, 其余保持边框色 (视觉层次对标 qingxiaotuan)
-            style = C["primary"] if i in (1, 2) else C["box"]
-            console.print(Text("│" + line + " " * pad + "│", style=style))
-        console.print(Text("╰" + "─" * inner + "╯", style=C["box"]))
-        for line in _tip_lines(self._session_name):
-            console.print(Text(line, style=C["dim"]))
+        border = C["box"]
+        primary = C["primary"]
+        dim_s = C["dim"]
+        text_s = C["text"]
+        muted_s = C["muted"]
+        hl = "─" * inner
+
+        def _line(content) -> "Text":
+            """把内容包成 │ ... │ 一行 (右填空白对齐右框)。"""
+            cw = _disp_width(str(content))
+            pad = max(1, inner - cw)
+            line = Text("│", style=border)
+            line.append(content)
+            line.append(" " * pad + "│", style=border)
+            return line
+
+        # 顶
+        console.print(Text("╭" + hl + "╮", style=border))
+
+        # 吉祥物 (原始 box-art, 不改): 顶行用原始 ▛ 缺口眼, 底行实心底。
+        r1 = Text("  ▐█▛█▛█▌  ", style=primary)
+        r1.append(t("banner.welcome"), style=primary)
+        r2 = Text("  ▐█████▌  ", style=primary)
+        r2.append(t("banner.help_hint"), style=dim_s)
+        console.print(_line(r1))
+        console.print(_line(r2))
+
+        # 空行分隔
+        console.print(Text("│" + " " * inner + "│", style=border))
+
+        # 信息行: 标签左对齐, 值列对齐
+        labels = [t("banner.directory"), t("banner.session"),
+                  t("banner.model"), t("banner.version")]
+        values = [self._cwd, self._session_name, self._model, self._version]
+        label_w = max(len(l) for l in labels)
+        for label, value in zip(labels, values):
+            row = Text("  ", style=muted_s)
+            row.append((label + ":").ljust(label_w + 3), style=muted_s)
+            row.append(value, style=text_s)
+            console.print(_line(row))
+
+        # 底
+        console.print(Text("╰" + hl + "╯", style=border))
 
     def banner(self, config=None, workspace: str = "", model_label: str = "", profile: str = "",
                mode: str = "", effort: str = "") -> None:
@@ -156,14 +175,13 @@ class UI:
             if hasattr(config, "get"):
                 self._session_name = config.get("session_id", self._session_name) or self._session_name
         self.render_banner()
-        # 底部状态栏
-        self.status_bar(mode, effort, workspace)
+        # 注: 状态栏由调用方 (cli/commands.py) 单独打印, 避免在 banner 内重复渲染
 
     def status_bar(self, mode: str = "", effort: str = "", workspace: str = "",
                    plan: bool = False) -> None:
-        """qingxiaotuan 风格双行状态栏:
-        左: model  cwd  branch[±]  右: /help: show commands
-        下行右对齐: context: pct% (used/budget)
+        """qingxiaotuan 风格状态栏 (单行):
+        左: model  cwd  branch[±]  右: context: pct% (used/budget)
+        无上下文占用时, 右侧回退为 /help 提示。
         """
         self._cwd = workspace or self._cwd
         self._branch = self._detect_branch()
@@ -171,26 +189,22 @@ class UI:
         console = self.console
         width = console.width or 100
 
-        # 第一行: 左 吉祥物/model/cwd/branch, 右 /help 提示
-        icon = MASCOT_ICONS.get(self._mascot.state, "◦")
         branch = f"{self._branch} [±]" if dirty else self._branch
-        left = f"{icon} {self._model}  {self._cwd}  {branch}"
+        left = f"{self._model}  {self._cwd}  {branch}"
         if plan:
             left += "  [PLAN]"
-        right = t("repl.help_hint")
-        gap = max(1, width - _disp_width(left) - _disp_width(right))
-        line1 = left + " " * gap + right
-        console.print(Text(line1, style=C["muted"]))
 
-        # 第二行: 右对齐 context 占用
+        # 右侧: 有上下文占用则显示占用, 否则显示 /help 提示
         if self._ctx_budget:
             ctx = f"context: {self._ctx_pct:.0f}% ({_fmt_tokens(self._ctx_used)}/{_fmt_tokens(self._ctx_budget)})"
         elif self._ctx_pct:
             ctx = f"context: {self._ctx_pct:.0f}%"
         else:
-            ctx = ""
-        if ctx:
-            console.print(Text(" " * max(1, width - _disp_width(ctx)) + ctx, style=C["muted"]))
+            ctx = t("repl.help_hint")
+
+        gap = max(1, width - _disp_width(left) - _disp_width(ctx))
+        line1 = left + " " * gap + ctx
+        console.print(Text(line1, style=C["muted"]))
 
     def _build_session(self) -> Optional["PromptSession"]:
         if self._pt_disabled:
@@ -219,8 +233,10 @@ class UI:
                 history=FileHistory(str(hist)),
                 key_bindings=kb,
                 multiline=True,
-                prompt_continuation="│ ",
-                bottom_toolbar=t('repl.toolbar'),
+                prompt_continuation="  ",
+                # 底部工具栏留空, 避免把 "Enter 发送 | ..." 这类帮助文字塞进输入框
+                # (对标 Kimi Code CLI 截图: 输入框内只有 > 提示符和光标)
+                bottom_toolbar="",
                 enable_history_search=True,
                 style=Style.from_dict(blank_pt_style()),
                 completer=WordCompleter(
@@ -235,7 +251,7 @@ class UI:
             self._pt_disabled = True
             return None
 
-    def prompt(self, prefix: str = "│ > ") -> str:
+    def prompt(self, prefix: str = "> ") -> str:
         """qingxiaotuan 风格框式输入: 顶部/底部圆角边框, 输入行带 │ 左框。"""
         console = self.console
         width = console.width or 100
@@ -255,6 +271,15 @@ class UI:
                 raise
         console.print(Text("╰" + "─" * inner + "╯", style=C["box"]))
         return text.strip()
+
+    def confirm(self, prompt: str, *, expected: Optional[str] = None,
+                position: Optional[int] = None) -> bool:
+        """安全多阶段确认的交互入口 (支持一次性确认码 + 屏幕位置变化)。
+
+        复用 core.whitelist.interactive_confirm, 在终端用 input() 读取确认码。
+        """
+        from ..core.whitelist import interactive_confirm
+        return interactive_confirm(prompt, expected=expected, position=position)
 
     def info(self, text: str) -> None:
         self.console.print(Text(f"  {text}", style=C["text"]))

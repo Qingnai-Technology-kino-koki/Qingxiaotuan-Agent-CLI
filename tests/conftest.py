@@ -1,5 +1,6 @@
 import json
 import os
+import signal
 import sys
 import threading
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
@@ -8,6 +9,25 @@ from pathlib import Path
 import pytest
 
 sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
+
+# ------------------------------------------------------------------ 进程级超时保护
+# 如果操作系统支持 SIGALRM (POSIX), 注册一个全局看门狗防止单个测试无限挂起。
+# Windows 不支持 SIGALRM, 依赖 pytest-timeout 的 thread 方法作为后备。
+_GLOBAL_TIMEOUT = int(os.environ.get("PYTEST_GLOBAL_TIMEOUT", "300"))
+if hasattr(signal, "SIGALRM"):
+    def _global_watchdog(signum, frame):
+        pytest.exit(
+            f"[FATAL] 全局超时 ({_GLOBAL_TIMEOUT}s) 触发, 强制退出 pytest。\n"
+            "可能存在挂起的测试。请检查: pytest --timeout=120 --timeout-method=process",
+            returncode=1,
+        )
+    signal.signal(signal.SIGALRM, _global_watchdog)
+    signal.alarm(_GLOBAL_TIMEOUT)
+
+    @pytest.hookimpl(trylast=True)
+    def pytest_sessionfinish(session, exitstatus):
+        """测试会话结束时取消全局超时闹钟。"""
+        signal.alarm(0)
 
 # ------------------------------------------------------------------ 依赖健康检查
 # 缺少 httpx/rich/yaml 会导致 24+ 个测试模块 collection error,
@@ -21,7 +41,7 @@ for _mod in ("httpx", "rich", "yaml"):
 if _missing:
     pytest.exit(
         f"缺少测试依赖: {', '.join(_missing)}\n"
-        "请先激活虚拟环境 (Windows: .venv\Scripts\activate) 再运行测试,\n"
+        "请先激活虚拟环境 (Windows: .venv/Scripts/activate) 再运行测试,\n"
         "或执行: pip install httpx rich pyyaml",
         returncode=1,
     )
@@ -39,6 +59,16 @@ def _cleanup_ipc_managers():
         pass
 
 
+@pytest.fixture(autouse=True)
+def _refresh_global_alarm():
+    """每个测试开始时刷新全局超时闹钟, 防止前一个测试的残留 alarm 干扰当前测试。"""
+    if hasattr(signal, "SIGALRM"):
+        signal.alarm(_GLOBAL_TIMEOUT)
+    yield
+    if hasattr(signal, "SIGALRM"):
+        signal.alarm(_GLOBAL_TIMEOUT)  # 刷新为下一次测试重置
+
+
 @pytest.fixture()
 def qxt_home(tmp_path, monkeypatch):
     """每个测试使用独立的 QXT_HOME, 不污染真实用户目录。"""
@@ -54,12 +84,32 @@ def _isolated_environ(tmp_path, monkeypatch):
     - QXT_HOME 默认指向临时目录: config.loader 的 load_dotenv 不再读取真实
       用户目录下的 ~/.qingxiaotuan/.env, 本机凭据不会泄漏进测试进程;
     - 清空所有 *API_KEY* 变量: 路由/供应商可用性只由各测试显式注入决定;
+    - 清理可能泄漏的测试专用环境变量;
     - monkeypatch teardown 自动还原, 测试中途被灌进 os.environ 的变量一并回滚。
     需要特定变量的测试用 monkeypatch.setenv 自行覆盖即可。
     """
     monkeypatch.setenv("QXT_HOME", str(tmp_path / ".qingxiaotuan"))
     for key in [k for k in os.environ if "API_KEY" in k.upper()]:
         monkeypatch.delenv(key, raising=False)
+    # Clean up test-specific env vars that might leak between tests
+    for key in ("HOOK_AUDIT_LOG", "QXT_MODE", "QXT_WORKSPACE"):
+        monkeypatch.delenv(key, raising=False)
+    yield
+
+
+@pytest.fixture(autouse=True)
+def _reset_i18n_language():
+    """每个测试前把 i18n 语言重置回默认 zh-CN。
+
+    解释: i18n 的 `_current` 是模块级全局。全量测试按字母序运行, 前面某个用例
+    会调用 set_language('en')/ensure_language 而不再还原, 泄漏到后面依赖中文文案
+    的用例 (如 /resume 的「已恢复会话」、banner「Welcome to 青小团 CLI!」)。
+    隔离运行时这些用例各自通过, 全量却失败 —— 故需在此兜底复位, 保证确定性。
+    """
+    from qingxiaotuan.i18n import _current, DEFAULT_LANGUAGE
+    if _current != DEFAULT_LANGUAGE:
+        from qingxiaotuan.i18n import set_language
+        set_language(DEFAULT_LANGUAGE)
     yield
 
 

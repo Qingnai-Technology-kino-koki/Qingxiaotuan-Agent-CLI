@@ -8,6 +8,8 @@
 """
 
 import base64
+import hashlib
+import hmac
 import json
 
 import pytest
@@ -187,6 +189,30 @@ def test_notify_windows_fallback_chain(monkeypatch):
     assert bad["sent"] is False and "balloon-down" in bad["error"]
 
 
+def test_notify_macos_escapes_quotes(monkeypatch):
+    """macOS 分支必须把消息/标题中的双引号转义, 避免 AppleScript 字符串截断/注入。"""
+    import qingxiaotuan.ext.notify_engine as ne
+
+    eng = ne.NotifyEngine()
+    captured = {}
+
+    def fake_run(cmd, timeout=5):
+        captured["cmd"] = cmd
+        return (0, "")
+
+    monkeypatch.setattr(ne, "_run_cmd", fake_run)
+    eng._send('tit"le', 'mes"sage', "Darwin")
+    script = captured["cmd"][2]  # ["osascript", "-e", script]
+    # Darwin 路径必须把命令作为 list 传给 subprocess (shell=False),
+    # 防止把整条 AppleScript 当 shell 字符串注入 (P0 回归)。
+    assert isinstance(captured["cmd"], list)
+    assert captured["cmd"][0] == "osascript" and captured["cmd"][1] == "-e"
+    # 转义后的引号应成对包裹完整字符串, 而非截断
+    assert 'tit\\"le' in script
+    assert 'mes\\"sage' in script
+    assert script.endswith('"')
+
+
 def test_notify_beep_dry_run_and_handle_envelope():
     eng = NotifyEngine()
     res = eng.beep({"dry_run": True})
@@ -244,13 +270,34 @@ def test_crypto_open_invalid_utf8_friendly_error():
     iv = b"0123456789abcdef"
     key = _derive_key("pw", salt, 100000)
     # 目标明文 0xFF 永远不是合法 UTF-8; 密文 = 目标 XOR keystream (对称)
-    ciphertext = _xor_stream(b"\xff\xff\xff", key)
+    # 注意: P0 修复后 _xor_stream 要求 nonce(=iv) 必须参与密钥流派生, 故此处须传入 iv
+    ciphertext = _xor_stream(b"\xff\xff\xff", key, nonce=iv)
+    # 提供合法 MAC (完整性校验为强制项), 以便仍能走到 UTF-8 解码错误分支
+    mac = hmac.new(key, iv + ciphertext, hashlib.sha256).digest()
     with pytest.raises(ValueError) as excinfo:
         eng.open({"passphrase": "pw",
                   "salt_b64": base64.b64encode(salt).decode(),
                   "iv_b64": base64.b64encode(iv).decode(),
-                  "ciphertext_b64": base64.b64encode(ciphertext).decode()})
+                  "ciphertext_b64": base64.b64encode(ciphertext).decode(),
+                  "mac_b64": base64.b64encode(mac).decode()})
     assert "UTF-8" in str(excinfo.value)
+
+
+def test_crypto_open_requires_mac_fail_closed():
+    """fail-closed: 缺少 MAC 校验标签时拒绝解密, 杜绝无完整性保护的静默解密。"""
+    sealed = CryptoEngine().seal({"plaintext": "secret", "passphrase": "pw"})
+    with pytest.raises(ValueError) as excinfo:
+        CryptoEngine().open({"passphrase": "pw",
+                             "salt_b64": sealed["salt_b64"],
+                             "iv_b64": sealed["iv_b64"],
+                             "ciphertext_b64": sealed["ciphertext_b64"]})
+    assert "MAC" in str(excinfo.value)
+
+
+def test_crypto_iterations_cap_prevents_dos():
+    """迭代次数超过上限应被拒绝 (防 DoS)。"""
+    with pytest.raises(ValueError):
+        CryptoEngine().seal({"plaintext": "x", "passphrase": "pw", "iterations": 50_000_000})
 
 
 def test_crypto_seal_open_roundtrip_regression():

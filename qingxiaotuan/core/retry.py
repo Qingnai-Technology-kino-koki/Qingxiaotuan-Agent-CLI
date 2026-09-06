@@ -126,7 +126,15 @@ class RetryPolicy:
                         f"{label}鉴权失败 (HTTP {status}): 请检查 API Key 是否正确、未过期、"
                         f"且对当前模型有访问权限。"
                     ) from exc
-                if attempt >= self.max_retries or (status is not None and status not in self.retry_on):
+                # 可重试判定:
+                #  - 无 HTTP 状态码 (网络/超时类瞬时错误) → 一律可重试;
+                #  - 有状态码 → 仅在 retry_on 白名单内才重试;
+                #  - 超出重试预算 → 不再重试。
+                if status is None:  # 网络/超时/连接等瞬时错误
+                    retriable = True
+                else:
+                    retriable = status in self.retry_on
+                if not retriable or attempt >= self.max_retries:
                     break
                 wait = self.wait_for(attempt, kind, exc)
                 if emit:
@@ -163,6 +171,7 @@ class RateLimiter:
         clock: Optional[Callable[[], float]] = None,
     ) -> None:
         self.rate = max(0, int(max_requests_per_minute))
+        self._max_concurrent = max(0, int(max_concurrent))
         self._sem = threading.Semaphore(max_concurrent) if max_concurrent > 0 else None
         self._sleep = sleep or _default_sleep
         self._clock = clock or time.monotonic
@@ -206,3 +215,132 @@ class RateLimiter:
         """请求结束后调用: 释放并发信号量。"""
         if self._sem:
             self._sem.release()
+
+
+# ------------------------------------------------------------ 熔断器 (Circuit Breaker)
+
+class CircuitOpen(RuntimeError):
+    """熔断器开启时, 调用被快速失败而非打到已故障的上游。"""
+
+
+class CircuitBreaker:
+    """调用级熔断器: 与 RetryPolicy / RateLimiter 互补的第三道韧性防线。
+
+    - RetryPolicy  : 被 429/5xx 打回来后「退避重试」(每次仍真实打到上游);
+    - RateLimiter  : 发送前「主动节流」避免触发限流;
+    - CircuitBreaker: 连续失败达阈值后「直接熔断」, 在冷却期内对所有调用快速失败,
+                      不再浪费重试预算去打一个已经挂掉的上游 (省 token / 省时间 / 快失败)。
+
+    状态机:
+        CLOSED  --(连续失败 >= failure_threshold)-->  OPEN
+        OPEN    --(冷却 cooldown 到期, 放行一次试探)-->  HALF_OPEN
+        HALF_OPEN --(连续成功 >= success_threshold)--> CLOSED
+        HALF_OPEN --(试探失败)-->  OPEN (重置冷却计时)
+
+    线程安全 (单实例可被多个 worker 共享)。clock 可注入, 测试无需真等待。
+    enabled=False 时退化为透传 (call 直接执行 fn), 与未接入完全一致。
+    """
+
+    CLOSED = "closed"
+    OPEN = "open"
+    HALF_OPEN = "half_open"
+
+    def __init__(
+        self,
+        failure_threshold: int = 5,
+        cooldown: float = 30.0,
+        success_threshold: int = 1,
+        clock: Optional[Callable[[], float]] = None,
+        enabled: bool = True,
+    ) -> None:
+        self.enabled = bool(enabled)
+        self.failure_threshold = max(1, int(failure_threshold))
+        self.cooldown = float(cooldown)
+        self.success_threshold = max(1, int(success_threshold))
+        self._clock = clock or time.monotonic
+        self._lock = threading.Lock()
+        self._state = self.CLOSED
+        self._failures = 0
+        self._successes = 0
+        self._opened_at = 0.0
+
+    @classmethod
+    def from_config(cls, config) -> "CircuitBreaker":
+        """按 agent.circuit_breaker.* 配置构造; 未启用时返回透传实例 (不触发任何熔断)。"""
+        if not config.get("agent.circuit_breaker.enabled", False):
+            return cls(enabled=False)
+        return cls(
+            failure_threshold=config.get("agent.circuit_breaker.failure_threshold", 5),
+            cooldown=config.get("agent.circuit_breaker.cooldown", 30.0),
+            success_threshold=config.get("agent.circuit_breaker.success_threshold", 1),
+        )
+
+    # ------------------------------------------------------------ 查询 / 控制
+
+    @property
+    def state(self) -> str:
+        with self._lock:
+            return self._state
+
+    def stats(self) -> dict:
+        with self._lock:
+            return {
+                "state": self._state,
+                "failures": self._failures,
+                "successes": self._successes,
+                "opened_at": self._opened_at,
+                "enabled": self.enabled,
+            }
+
+    def reset(self) -> None:
+        """复位到 CLOSED (运维手动恢复 / 测试用)。"""
+        with self._lock:
+            self._state = self.CLOSED
+            self._failures = 0
+            self._successes = 0
+            self._opened_at = 0.0
+
+    def trip(self) -> None:
+        """手动熔断 (立即进入 OPEN, 重置冷却计时)。"""
+        with self._lock:
+            self._state = self.OPEN
+            self._opened_at = self._clock()
+
+    # ------------------------------------------------------------ 带熔断执行
+
+    def call(self, fn: Callable, *, label: str = "调用"):
+        """执行 fn(); 熔断器开启且冷却未到则快速失败 (CircuitOpen)。"""
+        if not self.enabled:
+            return fn()
+        with self._lock:
+            if self._state == self.OPEN:
+                remaining = self.cooldown - (self._clock() - self._opened_at)
+                if remaining <= 0:
+                    self._state = self.HALF_OPEN
+                    self._successes = 0
+                else:
+                    raise CircuitOpen(
+                        f"{label}熔断器开启中 (约 {remaining:.0f}s 后重试), 已快速失败以避免反复打到故障上游"
+                    )
+            half_open = self._state == self.HALF_OPEN
+        try:
+            result = fn()
+        except Exception:  # noqa: BLE001
+            with self._lock:
+                self._failures += 1
+                if half_open:
+                    self._state = self.OPEN
+                    self._opened_at = self._clock()
+                elif self._failures >= self.failure_threshold:
+                    self._state = self.OPEN
+                    self._opened_at = self._clock()
+            raise
+        with self._lock:
+            if half_open:
+                self._successes += 1
+                if self._successes >= self.success_threshold:
+                    self._state = self.CLOSED
+                    self._failures = 0
+            else:
+                self._failures = 0
+        return result

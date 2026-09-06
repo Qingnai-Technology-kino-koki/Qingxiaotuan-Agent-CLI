@@ -44,12 +44,12 @@ class ModelPreset:
 MODEL_PRESETS: List[ModelPreset] = [
     # ---- Tier 1: 免费 / 极低价 (适合简单任务) ----
     ModelPreset(
-        provider="opencode-zen", model="deepseek-v4-flash-free",
-        base_url="https://opencode.ai/zen/v1",
-        api_key_env="OPENCODE_ZEN_API_KEY",
+        provider="deepseek", model="deepseek-chat",
+        base_url="https://api.deepseek.com",
+        api_key_env="DEEPSEEK_API_KEY",
         tier=1, max_difficulty=3,
-        cost_per_1k_input=0.0, cost_per_1k_output=0.0,
-        capabilities=["chat", "code", "reasoning_basic"],
+        cost_per_1k_input=0.00014, cost_per_1k_output=0.00028,
+        capabilities=["chat", "code", "reasoning_basic", "function_calling"],
     ),
     ModelPreset(
         provider="groq", model="llama-3.3-70b-versatile",
@@ -318,51 +318,12 @@ class ModelRouter:
     def estimate_difficulty(self, task: str, context: str = "") -> int:
         """估算任务难度 (1-10)。
 
-        基于关键词和特征的启发式评估:
-        - 简单任务: 查询、总结、格式化
-        - 中等任务: 修改、重构、测试
-        - 复杂任务: 架构设计、安全审计、性能优化
+        委托给 :class:`~qingxiaotuan.models.difficulty.DifficultyClassifier`:
+        采结构化特征 + 对抗性前缀消解, 而非旧的纯关键词加法 (否则 "简单总结复杂
+        架构设计" 会被 easy/hard 关键词对消成中等, 见评审 Major #4)。
         """
-        text = (task + " " + context).lower()
-        score: float = 5  # 默认中等
-
-        # 简单任务关键词 (-2~3)
-        easy_keywords = ["查询", "总结", "列出", "查看", "显示", "格式化",
-                         "search", "list", "show", "summary", "format", "read"]
-        for kw in easy_keywords:
-            if kw in text:
-                score -= 1
-
-        # 复杂任务关键词 (+2~4)
-        hard_keywords = ["架构", "设计", "重构", "优化", "安全", "审计",
-                         "性能", "并发", "分布式", "加密", "认证",
-                         "architecture", "design", "refactor", "optimize",
-                         "security", "audit", "performance", "concurrent"]
-        for kw in hard_keywords:
-            if kw in text:
-                score += 1
-
-        # 中等任务关键词
-        medium_keywords = ["修改", "添加", "实现", "修复", "测试", "集成",
-                           "modify", "add", "implement", "fix", "test", "integrate"]
-        for kw in medium_keywords:
-            if kw in text:
-                score += 0.5
-
-        # 任务长度也是难度指标
-        if len(task) > 200:
-            score += 1
-        if len(task) > 500:
-            score += 1
-
-        # 代码相关任务通常更难
-        code_keywords = ["函数", "类", "模块", "接口", "API", "数据库",
-                         "function", "class", "module", "interface", "database"]
-        for kw in code_keywords:
-            if kw in text:
-                score += 0.5
-
-        return max(1, min(10, int(round(score))))
+        from .difficulty import _default_classifier
+        return _default_classifier.classify(task, context)
 
     def select_model(
         self,
@@ -482,6 +443,17 @@ class ModelRouter:
                     return p
         return None
 
+    def _current_preset(self, provider: Optional[str], model: Optional[str]):
+        """解析「当前模型」的档位: 同一 (provider, model) 可能注册在多个 tier
+        (如 deepseek-chat 同时是 tier1/tier2), 用户显式配置的当前模型取其最高档,
+        否则降级比较会把 tier2 的 deepseek-chat 误判成 tier1, 导致简单任务永不降级。"""
+        best = None
+        for p in self._available_presets:
+            if p.provider == provider and p.model == model:
+                if best is None or p.tier > best.tier:
+                    best = p
+        return best or self._preset_for(provider, model)
+
     def decide(
         self,
         task: str,
@@ -506,7 +478,7 @@ class ModelRouter:
             difficulty, available_providers=available_providers, required_capabilities=required
         )
         chosen = self._preset_for(chosen_provider, chosen_model)
-        current = self._preset_for(current_provider, current_model)
+        current = self._current_preset(current_provider, current_model)
 
         if current is None:
             # 自定义/未知模型: 尊重用户选择, 不自动路由 (避免切到无凭证的预设模型)

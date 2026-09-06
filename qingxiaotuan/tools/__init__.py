@@ -19,10 +19,15 @@ from .code_review import CodeReviewPlugin
 from .external import ExternalToolsPlugin
 from .languages import LanguagePlugin
 from .permissions import PermissionPolicy
+from .permission_fusion import FusionPermissionPolicy, build_permission_policy
+from .code_graph import CodeGraphPlugin
+from .backend_dev import BackendDevPlugin
+from .sandbox import SandboxPlugin
+from .dynamic_workflow_tool import DynamicWorkflowPlugin
 
 __all__ = [
     "Tool", "ToolContext", "ToolRegistry",
-    "PermissionPolicy",
+    "PermissionPolicy", "FusionPermissionPolicy", "build_permission_policy",
     "ToolRegistryPlugin", "builtin_tool_plugins",
 ]
 
@@ -49,6 +54,7 @@ def builtin_tool_plugins():
         DispatchPlugin(), PipelinePlugin(), CodeReviewPlugin(),
         ExternalToolsPlugin(), LanguagePlugin(), CheckpointPlugin(),
         TaskToolPlugin(),
-        SessionToolsPlugin(),
+        SessionToolsPlugin(), CodeGraphPlugin(), BackendDevPlugin(), SandboxPlugin(),
+        DynamicWorkflowPlugin(),
     ]
 

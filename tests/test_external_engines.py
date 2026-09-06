@@ -148,6 +148,29 @@ def test_ext_index_build_and_query(tmp_path):
     assert "hello" in q
 
 
+@pytest.mark.skipif(not HAVE_INDEX, reason="index 引擎不可用")
+def test_index_cache_scoped_by_workspace(tmp_path):
+    """切换工作区后查询不应命中上一工作区残留的索引 (stale 防护)。"""
+    import qingxiaotuan.tools.external as ext
+
+    (tmp_path / "mod.py").write_text("def hello():\n    return 1\n", encoding="utf-8")
+    ext._INDEX_CACHE.clear()
+    k = _kernel()
+    registry = k.require("tool_registry")
+
+    ctx_a = _ctx(k, tmp_path)
+    registry.dispatch("ext_index_build", json.dumps({"root": str(tmp_path)}), ctx_a)
+    qa = registry.dispatch("ext_index_query", json.dumps({"symbol": "hello"}), ctx_a)
+    assert "hello" in qa
+
+    # 另一个工作区 (不同 workspace 键) 查询必须返回空, 不能残留 ctx_a 的索引
+    other = tmp_path / "other_ws"
+    other.mkdir()
+    ctx_b = ToolContext(kernel=k, workspace=str(other), confirm=lambda _p: True)
+    qb = registry.dispatch("ext_index_query", json.dumps({"symbol": "hello"}), ctx_b)
+    assert "hello" not in qb
+
+
 @pytest.mark.skipif(not HAVE_RULES, reason="rules 引擎不可用")
 def test_ext_rules_load_and_check(tmp_path):
     k = _kernel()
@@ -168,14 +191,6 @@ def test_ext_rules_load_and_check(tmp_path):
     v2 = json.loads(registry.dispatch("ext_rules_check", json.dumps(
         {"path": "app.py", "content": "x = 1"}), ctx))
     assert v2.get("passed") is True
-
-
-@pytest.mark.skipif(not HAVE_RULES, reason="rules 引擎不可用")
-def test_ext_skill_search(tmp_path):
-    k = _kernel()
-    out = k.require("tool_registry").dispatch("ext_skill_search", json.dumps(
-        {"query": "zzz-no-such-skill"}), _ctx(k, tmp_path))
-    assert "packages" in out
 
 
 # ---------------------------------------------------------------- safety (IPC 子进程冒烟)

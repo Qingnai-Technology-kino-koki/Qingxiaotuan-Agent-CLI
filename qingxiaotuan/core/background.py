@@ -18,6 +18,7 @@
 from __future__ import annotations
 
 import logging
+import json
 import threading
 import time
 import uuid
@@ -32,7 +33,7 @@ from .kernel import Kernel
 from .agent import Agent
 from .markers import is_done
 from ..memory.sessions import SessionStore
-from .background_store import BackgroundStore
+from .background_store import BackgroundStore, _is_process_alive
 
 log = logging.getLogger(__name__)
 
@@ -72,7 +73,7 @@ class BackgroundJob:
         out: List[str] = []
         for ln in lines[-n * 3:]:
             try:
-                rec = __import__("json").loads(ln)
+                rec = json.loads(ln)
             except Exception:
                 continue
             t = rec.get("type")
@@ -216,7 +217,23 @@ class BackgroundRunner:
             creationflags=creationflags,
         )
         updated = self._store.update(job_id, pid=process.pid, status="running", heartbeat=time.time())
-        return updated or data
+        # 校验 worker 真的起来了: Popen 成功只代表 OS 创建了进程, 不代表它能跑完
+        # import (例如 background_worker 依赖缺失会瞬间退出)。若不校验, manifest 会停
+        # 在 running 而进程早已死, 任务永远跑不完, CLI 还以为后台在干活。
+        deadline = time.time() + 3.0
+        current: Optional[Dict[str, Any]] = None
+        while time.time() < deadline:
+            if not _is_process_alive(process.pid):
+                current = self._store.get(job_id)
+                reason = (current or {}).get("error") if current else None
+                self._store.update(job_id, status="failed",
+                                   error=reason or "worker 进程未能存活 (subprocess 已退出)")
+                raise RuntimeError(f"后台 worker 启动失败: {reason or '进程已退出'}")
+            current = self._store.get(job_id)
+            if current and current.get("status") == "running" and current.get("pid") == process.pid:
+                break
+            time.sleep(0.1)
+        return updated or current or {}
 
     def list_jobs(self) -> List[BackgroundJob]:
         self._store.reconcile_stale(float(self.config.get("background.heartbeat_timeout", 90)))
@@ -323,6 +340,45 @@ class BackgroundRunner:
                 removed += 1
         return removed
 
+    # -------------------------------------------------------- 多任务并行
+
+    def submit_parallel(
+        self,
+        tasks: List[str],
+        confirm: Optional[Callable[[str], bool]] = None,
+        stream: bool = False,
+        on_progress: Optional[Callable[[str, str], None]] = None,
+        exclude_tools: tuple = (),
+    ) -> List[BackgroundJob]:
+        """并行提交多个后台任务, 立即返回所有 job 句柄。
+
+        与逐个调用 submit 的区别:
+        - 原子性: 一次调用提交全部, 避免中途失败导致部分提交;
+        - 聚合状态: status_all() 可以一键查看全部任务的进度。
+        """
+        jobs: List[BackgroundJob] = []
+        for task in tasks:
+            if not task or not task.strip():
+                continue
+            job = self.submit(
+                task.strip(), confirm=confirm, stream=stream,
+                on_progress=on_progress, exclude_tools=exclude_tools,
+            )
+            jobs.append(job)
+        return jobs
+
+    def status_all(self) -> Dict[str, Any]:
+        """聚合查看所有任务的状态概览。"""
+        jobs = self.list_jobs()
+        by_status: Dict[str, int] = {}
+        for j in jobs:
+            by_status[j.status] = by_status.get(j.status, 0) + 1
+        return {
+            "total": len(jobs),
+            "by_status": by_status,
+            "jobs": [j.to_dict() for j in jobs[:20]],
+        }
+
     def recover_queued(self) -> List[str]:
         """CLI 进程重启后, 重启所有 queued 且无人接管的任务 (崩溃恢复)。
 
@@ -353,9 +409,25 @@ class BackgroundRunner:
 # ---------------------------------------------------------------- CLI 便捷入口
 
 def submit_background(kernel: Kernel, agent: Agent, task: str, workspace: str) -> str:
-    """模块级便捷函数: 提交后台任务并返回 job_id (供 cli/commands 调用)。"""
-    runner = BackgroundRunner(kernel, kernel.require("config"), workspace)
-    return runner.submit(task).job_id
+    """模块级便捷函数: 提交后台任务并返回 job_id (供 cli/commands 调用)。
+
+    使用 submit_detached 启动独立 worker 进程, 确保任务在 CLI 退出后仍能完成。
+
+    仅当配置显式允许 `background.allow_thread_fallback` (测试/嵌入环境) 时, 才在
+    detached 真正不可用的情况下降级为进程内 daemon 线程 —— 该线程会随 CLI 退出被杀,
+    故绝不作静默默认。其他任何 detached 失败都直接上浮, 让 CLI 如实报错。
+    """
+    config = kernel.require("config")
+    runner = BackgroundRunner(kernel, config, workspace)
+    try:
+        data = runner.submit_detached(task)
+        return str(data["job_id"])
+    except Exception as exc:
+        if config.get("background.allow_thread_fallback", False):
+            log.warning("submit_detached 失败, 降级为进程内 daemon 线程 "
+                        "(任务不会在 CLI 退出后存活): %s", exc)
+            return runner.submit(task).job_id
+        raise
 
 
 def wait_for_job(kernel: Kernel, job_id: str, timeout: float = 0) -> str:

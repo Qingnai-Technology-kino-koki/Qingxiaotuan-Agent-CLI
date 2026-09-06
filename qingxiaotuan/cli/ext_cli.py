@@ -16,7 +16,7 @@ from __future__ import annotations
 import json
 from typing import Dict, List, Optional
 
-from rich.table import Table
+from ..ui.format import Table
 
 from ..core.ipc_client import ExternalEngineManager, IpcError
 from ..ui.plain_console import console
@@ -26,7 +26,7 @@ _ENGINE_GROUPS: Dict[str, str] = {
     "diff": "Python", "patch": "Python", "merge3": "Python",
     "crypto": "Python", "index": "Python", "ansi": "Python",
     "safety": "Python", "json": "Python", "search": "Python",
-    "notify": "Python", "rules": "Python", "skill-market": "Python",
+    "notify": "Python", "rules": "Python",
 }
 
 

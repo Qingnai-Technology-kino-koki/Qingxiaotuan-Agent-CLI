@@ -6,6 +6,10 @@ import os
 from pathlib import Path
 from unittest import mock
 
+import pytest
+
+openai = pytest.importorskip("openai", reason="需要 openai 包")
+
 from qingxiaotuan.config import Config, PRESET_PROFILES, load_dotenv
 from qingxiaotuan.models.openai_compat import OpenAICompatAdapter
 from qingxiaotuan.logging_conf import redact, setup_logging

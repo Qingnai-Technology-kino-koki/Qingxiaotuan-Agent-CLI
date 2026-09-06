@@ -83,9 +83,12 @@ class NotifyEngine:
                         "first_error": err}
             return {"sent": False, "error": err2 or err, "system": system}
         if system == "Darwin":
-            script = ('osascript -e \'display notification "{m}" with title "{t}"\''
-                      .replace("{m}", message).replace("{t}", title))
-            code, err = _run_cmd(script, timeout=5)
+            # 使用 list 形式避免 shell 注入, shell=False;
+            # 同时转义反斜杠与双引号, 防止消息/标题中的 " 截断 AppleScript 字符串或注入语句
+            esc_title = title.replace("\\", "\\\\").replace('"', '\\"')
+            esc_message = message.replace("\\", "\\\\").replace('"', '\\"')
+            script = f'display notification "{esc_message}" with title "{esc_title}"'
+            code, err = _run_cmd(["osascript", "-e", script], timeout=5)
             return {"sent": code == 0, "backend": "osascript",
                     **({} if code == 0 else {"error": err})}
         code, err = _run_cmd(["notify-send", title, message])

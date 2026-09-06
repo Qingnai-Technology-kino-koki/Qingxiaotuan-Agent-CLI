@@ -1,22 +1,18 @@
-"""青小团动态吉祥物 (Mascot)。
+"""青小团吉祥物 — block art logo。
 
-设计语言
---------
-一只圆润的「青色小团子」: 呼应项目名 Qingxiaotuan, 青色基调, 极简几何造型,
-跨平台终端都能渲染 (不依赖图片)。它有"生命体征"——随任务推进切换状态:
+设计语言 (对齐 TUI):
+  参考实现的终端 TUI 没有 ASCII 脸吉祥物,
+  使用的是 block art logo: ▐█▛█▛█▌ / ▐█████▌
+  配合 moon phase spinner (🌑🌒🌓🌔🌕🌖🌗🌘) 做状态动画。
 
-  idle     待命  —— 平静呼吸, 圆眼
-  thinking 思考  —— 眼睛转圈 / 脉冲, 头顶冒问号
-  working  干活  —— 身体上下浮动 + 进度环, 眼睛专注
-  alert    警戒  —— 变橙、抖动, 出现在 safety 拦截时 (最小影响半径生效)
-  done     完成  —— 眼睛变弯月, 头顶小勾
+  本模块提供:
+  * logo()   -> block art logo (两行)
+  * spinner() -> moon phase spinner frame
+  * state_icon() -> 单字符状态图标
+  * svg()    -> SVG 动态组件 (用于富 UI / README)
 
-两套表达:
-  * ascii 帧动画  -> 纯键盘流 CLI (嵌入 banner / 状态栏), ANSI 着色
-  * svg 动态组件  -> 富 UI / 文档 / README, 用 SMIL/CSS 动画随状态切换
-
-状态由 UI 层驱动: think_start()->thinking, tool_call()->working,
-安全拦截 -> alert, 任务结束 -> done, 空闲 -> idle。
+状态由 UI 层驱动: thinking->moon spinner, working->moon spinner,
+安全拦截 -> alert icon, 任务结束 -> done icon, 空闲 -> idle icon。
 """
 
 from __future__ import annotations
@@ -33,18 +29,45 @@ DONE = "done"
 
 STATES = (IDLE, THINKING, WORKING, ALERT, DONE)
 
-# 配色 (Kimi Code 官方 dark token: primary=#4FA8FF / accent=#5BC0BE / success=#4EC87E / warning=#E8A838 / error=#E85454)
-_PALETTE = {
-    IDLE:     {"body": "#4FA8FF", "dark": "#1E5FA8", "eye": "#0B2540", "accent": "#5BC0BE"},
-    THINKING: {"body": "#4FA8FF", "dark": "#1E5FA8", "eye": "#0B2540", "accent": "#7AD99B"},
-    WORKING:  {"body": "#4EC87E", "dark": "#1E7A48", "eye": "#053B2A", "accent": "#7AD99B"},
-    ALERT:    {"body": "#E8A838", "dark": "#92660A", "eye": "#3B1A06", "accent": "#F08585"},
-    DONE:     {"body": "#5BC0BE", "dark": "#1E6E6C", "eye": "#0B3B38", "accent": "#7AD99B"},
+# 配色 (dark palette)
+_PRIMARY = "#4FA8FF"
+_ACCENT = "#5BC0BE"
+_SUCCESS = "#4EC87E"
+_WARNING = "#E8A838"
+_ERROR = "#E85454"
+
+# Moon phase spinner frames (原版)
+MOON_FRAMES = ["🌑", "🌒", "🌓", "🌔", "🌕", "🌖", "🌗", "🌘"]
+MOON_INTERVAL_MS = 120
+
+# Braille spinner (备用)
+BRAILLE_FRAMES = ["⠋", "⠙", "⠹", "⠸", "⠼", "⠴", "⠦", "⠧", "⠇", "⠏"]
+
+# block art logo (原版)
+_LOGO_LINE1 = "▐█▛█▛█▌"
+_LOGO_LINE2 = "▐█████▌"
+
+# 状态图标 (单字符)
+_STATE_ICONS = {
+    IDLE: "◦",
+    THINKING: "◍",
+    WORKING: "●",
+    ALERT: "⚠",
+    DONE: "✓",
+}
+
+# SVG 配色
+_SVG_PALETTE = {
+    IDLE:     {"body": _PRIMARY, "dark": "#1E5FA8", "eye": "#0B2540", "accent": _ACCENT},
+    THINKING: {"body": _PRIMARY, "dark": "#1E5FA8", "eye": "#0B2540", "accent": "#7AD99B"},
+    WORKING:  {"body": _SUCCESS, "dark": "#1E7A48", "eye": "#053B2A", "accent": "#7AD99B"},
+    ALERT:    {"body": _WARNING, "dark": "#92660A", "eye": "#3B1A06", "accent": "#F08585"},
+    DONE:     {"body": _ACCENT,  "dark": "#1E6E6C", "eye": "#0B3B38", "accent": "#7AD99B"},
 }
 
 
 class Mascot:
-    """青小团吉祥物: 管理状态并渲染 ascii / svg 两种形态。"""
+    """青小团吉祥物: block art logo + moon spinner + SVG。"""
 
     def __init__(self, state: str = IDLE) -> None:
         self.state = state if state in STATES else IDLE
@@ -58,110 +81,72 @@ class Mascot:
         return self
 
     def tick(self) -> int:
-        """推进动画帧计数 (用于 ascii 旋转/浮动)。返回当前帧序号。"""
-        self._frame = (self._frame + 1) % 4
+        """推进动画帧计数。返回当前帧序号。"""
+        self._frame = (self._frame + 1) % len(MOON_FRAMES)
         return self._frame
 
     @property
     def color(self) -> str:
-        return self._flow_color(_PALETTE[self.state]["body"])
+        """当前状态对应的主色。"""
+        return _SVG_PALETTE[self.state]["body"]
 
-    def _flow_color(self, state_color: str) -> str:
-        """在 Kimi Code primary 与 accent 之间缓慢呼吸，保留警告/完成状态的语义色。"""
-        if self.state in (ALERT, DONE):
-            return state_color
-        accent = (91, 192, 190)   # #5BC0BE
-        primary = (79, 168, 255)  # #4FA8FF
-        phase = (math.sin((time.monotonic() - self._started_at) * 0.9) + 1) / 2
-        # 状态色作为中间权重，让思考偏蓝、工作偏青。
-        state_rgb = self._hex(state_color)
-        weight = 0.25 + phase * 0.5
-        rgb = tuple(round((1 - weight) * state_rgb[i] + weight * (primary[i] if self.state == THINKING else accent[i])) for i in range(3))
-        return "#%02X%02X%02X" % rgb
+    # ---------------------------------------------------------- Block Art Logo
+    def logo(self) -> tuple[str, str]:
+        """返回 block art logo (两行)。
 
-    # ---------------------------------------------------------- ASCII 帧
-    # 每个状态 4 帧, 用 ANSI 着色。富终端可见动画, 朴素终端退化为静态小图。
-    _SPIN = ["⠋", "⠙", "⠹", "⠸", "⠼", "⠴", "⠦", "⠧", "⠇", "⠏"]
-    _FLOAT = [" ", "·", ":", "·"]  # 浮动相位
-    _THINK_Q = ["?", "°", "¿", "°"]
-
-    def ascii(self, frame: int | None = None, color: bool = True) -> str:
-        """返回 ANSI 着色的单行使者小图 (约 3 行高, 用 \\n 分隔)。
-
-        适合嵌在 banner 左侧或状态栏。frame 缺省用内部计数。
+        >>> m = Mascot()
+        >>> m.logo()
+        ('▐█▛█▛█▌', '▐█████▌')
         """
-        f = self._frame if frame is None else (frame % 4)
-        st = self.state
-        if st == IDLE:
-            body = self._ascii_idle(f)
-        elif st == THINKING:
-            body = self._ascii_thinking(f)
-        elif st == WORKING:
-            body = self._ascii_working(f)
-        elif st == ALERT:
-            body = self._ascii_alert(f)
-        else:
-            body = self._ascii_done(f)
-        if color:
-            return body
-        # ASCII 图形内部的颜色包装只用于原始终端；Rich 渲染时去掉 ANSI，
-        # 否则转义序列会被当作普通 banner 文本显示。
-        import re
-        return re.sub(r"\033\[[0-9;]*m", "", body)
+        return _LOGO_LINE1, _LOGO_LINE2
 
-    def _wrap(self, body: str, color_hex: str) -> str:
-        # 无高亮: 直接返回纯文本, 不加任何 ANSI 颜色
-        return body
+    # ---------------------------------------------------------- Spinner
+    def spinner(self, frame: int | None = None) -> str:
+        """返回当前 moon phase spinner frame。
 
-    @staticmethod
-    def _hex(h: str) -> tuple[int, int, int]:
-        h = h.lstrip("#")
-        return int(h[0:2], 16), int(h[2:4], 16), int(h[4:6], 16)
+        >>> m = Mascot()
+        >>> m.spinner(0) in MOON_FRAMES
+        True
+        """
+        f = self._frame if frame is None else (frame % len(MOON_FRAMES))
+        return MOON_FRAMES[f]
 
-    def _ascii_idle(self, f: int) -> str:
-        c = self.color
-        breath = self._FLOAT[f]
-        body = f"  {breath}( ◡ ){breath}\n" \
-               f"  ╭─────╮\n" \
-               f"  ╰─────╯"
-        return self._wrap(body, c)
+    def braille_spinner(self, frame: int | None = None) -> str:
+        """返回 braille spinner frame (备用)。"""
+        f = self._frame if frame is None else (frame % len(BRAILLE_FRAMES))
+        return BRAILLE_FRAMES[f]
 
-    def _ascii_thinking(self, f: int) -> str:
-        c = self.color
-        q = self._THINK_Q[f]
-        spin = self._SPIN[(f * 2) % len(self._SPIN)]
-        body = f"   {q} {spin}\n" \
-               f"  ( ◠ ◠ )\n" \
-               f"  ╭─────╮\n" \
-               f"  ╰─────╯"
-        return self._wrap(body, c)
+    # ---------------------------------------------------------- 状态图标
+    def state_icon(self) -> str:
+        """返回当前状态的单字符图标。
 
-    def _ascii_working(self, f: int) -> str:
-        c = self.color
-        lift = self._FLOAT[f]
-        body = f"  ( • • )\n" \
-               f" {lift}╭─────╮{lift}\n" \
-               f"  ╰─────╯\n" \
-               f"   ▔▔▔▔▔"
-        return self._wrap(body, c)
+        >>> m = Mascot('done')
+        >>> m.state_icon()
+        '✓'
+        """
+        return _STATE_ICONS.get(self.state, "◦")
 
-    def _ascii_alert(self, f: int) -> str:
-        c = _PALETTE[ALERT]["body"]
-        shake = " " if f % 2 == 0 else "!"
-        body = f"  {shake}( @ • ){shake}\n" \
-               f"  ╭─────╮\n" \
-               f"  ╰─────╯\n" \
-               f"   ⚠ 拦截"
-        return self._wrap(body, c)
+    def icon(self) -> str:
+        """state_icon() 的别名 (向后兼容)。"""
+        return self.state_icon()
 
-    def _ascii_done(self, f: int) -> str:
-        c = _PALETTE[DONE]["body"]
-        spark = "✦" if f % 2 == 0 else "  "
-        body = f"  {spark}\n" \
-               f"  ( ^ ^ )\n" \
-               f"  ╭─────╮\n" \
-               f"  ╰─────╯"
-        return self._wrap(body, c)
+    # ---------------------------------------------------------- ASCII 表示 (风格)
+    def ascii(self, frame: int | None = None, color: bool = True) -> str:
+        """返回 风格的 ASCII 表示。
+
+        与原版不同: 不再使用 ASCII 脸, 而是 block art logo + 状态 spinner。
+        适合嵌在侧栏或 banner。
+
+        布局:
+          ▐█▛█▛█▌  🌑  ← logo + spinner
+          ▐█████▌  ●   ← logo + 状态图标
+        """
+        f = self._frame if frame is None else (frame % len(MOON_FRAMES))
+        spin = MOON_FRAMES[f]
+        icon = _STATE_ICONS.get(self.state, "◦")
+        line1 = f"  {_LOGO_LINE1}  {spin}"
+        line2 = f"  {_LOGO_LINE2}  {icon}"
+        return f"{line1}\n{line2}"
 
     # ---------------------------------------------------------- SVG 动态
     def svg(self, size: int = 120) -> str:
@@ -169,9 +154,8 @@ class Mascot:
 
         用于富 UI / 文档 / README。viewBox 0 0 120 120。
         """
-        p = _PALETTE[self.state]
+        p = _SVG_PALETTE[self.state]
         body, dark, eye, accent = p["body"], p["dark"], p["eye"], p["accent"]
-        # 不同状态的核心动画段
         if self.state == THINKING:
             anim = self._svg_thinking(accent)
         elif self.state == WORKING:
@@ -193,16 +177,12 @@ class Mascot:
   <circle cx="60" cy="60" r="54" fill="url(#bg)"/>
   <g>
     {anim}
-    <!-- 团子身体 -->
     <ellipse cx="60" cy="68" rx="34" ry="32" fill="{body}" stroke="{dark}" stroke-width="3"/>
     <ellipse cx="60" cy="68" rx="34" ry="32" fill="{accent}" opacity="0.12"/>
-    <!-- 眼睛 -->
     <circle cx="49" cy="64" r="5.5" fill="{eye}"/>
     <circle cx="71" cy="64" r="5.5" fill="{eye}"/>
-    <!-- 腮红 -->
     <circle cx="44" cy="78" r="4" fill="{accent}" opacity="0.6"/>
     <circle cx="76" cy="78" r="4" fill="{accent}" opacity="0.6"/>
-    <!-- 嘴: 随状态变化 -->
     {self._svg_mouth(eye)}
   </g>
 </svg>'''

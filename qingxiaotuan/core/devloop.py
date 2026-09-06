@@ -1,17 +1,14 @@
-"""自主开发循环 (DevLoop) —— 借鉴 Claude Code 的「持续自主迭代」。
+"""自主开发循环 (DevLoop V2) —— 借鉴 Claude Code 的「持续自主迭代」。
 
-增强: 集成 Reflector 反思引擎, 形成 Plan→Execute→Reflect→Re-plan 双层闭环。
+V2 增强: 集成 TaskDAG / 专业化角色 / 结果聚合 / 协作协议。
 
-一轮完整循环覆盖: 分析代码库 → 规划最小改动 → 实施 → 反思验证 → 汇报。
-循环一直跑, 直到:
-  (a) 模型在某轮明确判定「功能与质量达标」(输出 【已完成】 标记), 且
-  (b) 用户确认满意 (stop_on_user_ok)。
-中间遇到歧义, 在检查点主动问用户。每轮都会汇报进度, 不让用户黑盒等待。
-
-Reflector 增强:
-  - 每轮实施后自动运行验证 (编译/测试/静态检查)
-  - 验证失败时自动诊断、建议修正方案
-  - 连续失败时自动降级: 缩小子任务粒度, 或请求用户确认
+核心循环: Plan→Execute→Reflect→Re-plan 双层闭环。
+V2 新增:
+- 任务自动拆解: 复杂任务由 TaskDAG 拓扑排序分波执行
+- 角色自动分配: 根据子任务类型自动选择 reviewer/tester/debugger/architect 等角色
+- 结果自动聚合: 去重 + 矛盾检测 + 质量评分
+- 协作黑板: 子任务间通过共享黑板传递中间结果
+- 安全审计: 所有安全决策通过 SecurityEventBus 记录
 """
 
 from __future__ import annotations
@@ -263,3 +260,159 @@ class DevLoop:
             on_sub_tool=on_sub_tool,
         )
         return SubAgentPool.aggregate(results, title=f"并行调研 · {task[:30]}")
+
+    # ------------------------------------------------------------ V2: 角色化协作开发
+
+    def run_with_roles(
+        self,
+        task: str,
+        roles: Optional[List[str]] = None,
+        stream: bool = True,
+        on_token: Optional[Callable[[str], None]] = None,
+        on_tool: Optional[Callable[[str, str], None]] = None,
+    ) -> str:
+        """V2: 基于专业化角色的协作开发循环。
+
+        1. 强模型分析任务, 自动拆解为子任务
+        2. 为每个子任务分配角色 (reviewer/tester/debugger/architect等)
+        3. 子 Agent 按角色并行执行
+        4. 结果聚合 + 矛盾检测
+        5. 强模型验收
+        """
+        from .task_dag import TaskDAG
+        from .specialized_roles import suggest_role, get_role
+        from .subagents import SubAgentPool, SubTask
+        from .result_aggregator import ResultAggregator
+        from .collaboration_protocol import CollaborationProtocol
+
+        kernel = self.agent.kernel
+        config = self.config
+        workspace = self.agent.workspace
+
+        # 1. 强模型分析并拆解任务
+        plan_prompt = (
+            f"请把下面的复杂任务拆解成 3-5 个互相独立的子任务, 每个子任务给出:"
+            f"id, title, prompt, role (可选: reviewer/tester/debugger/architect/implementer)。\n"
+            f"只输出 JSON, 不要解释。格式:\n"
+            f'{{"tasks": [{{"id":"T1","title":"...","prompt":"...","role":"..."}}]}}\n\n'
+            f"任务: {task}"
+        )
+        raw_plan = self.agent.run(plan_prompt, stream=False) or ""
+
+        # 解析计划
+        import json, re
+        text = raw_plan.strip()
+        if "```" in text:
+            m = re.search(r"```(?:json)?\s*([\s\S]*?)```", text)
+            if m:
+                text = m.group(1).strip()
+        try:
+            plan = json.loads(text)
+        except (json.JSONDecodeError, TypeError):
+            plan = {"tasks": [{"id": "T1", "title": task, "prompt": task, "role": "implementer"}]}
+
+        tasks = plan.get("tasks", []) or [{"id": "T1", "title": task, "prompt": task}]
+
+        # 2. 自动分配角色
+        for t in tasks:
+            if not t.get("role"):
+                t["role"] = suggest_role(t.get("prompt", t.get("title", "")))
+
+        # 3. 构建 DAG 并分波执行
+        dag = TaskDAG()
+        for t in tasks:
+            dag.add_node(
+                task_id=t["id"], title=t.get("title", ""),
+                prompt=t["prompt"], role=t.get("role", "implementer"),
+            )
+
+        # 打破循环
+        cycles = dag.detect_cycles()
+        if cycles:
+            dag.break_cycles()
+
+        # 创建协作黑板
+        board = CollaborationProtocol()
+        board.write("__task__", task, sender="planner")
+        board.write("__plan__", json.dumps(tasks, ensure_ascii=False), sender="planner")
+
+        # 角色注册表
+        role_registry = kernel.get("role_registry")
+        get_role_fn = role_registry.get("get") if role_registry else None
+
+        # 并发执行
+        pool = SubAgentPool(
+            kernel=kernel, config=config, workspace=workspace,
+            main_agent=self.agent, confirm=self.agent.ctx.confirm,
+            default_timeout=float(config.get("agent.subagent_timeout", 180)),
+            isolation=config.get("agent.subagent_isolation", "process"),
+        )
+
+        all_results = []
+        max_concurrent = min(int(config.get("agent.subagent_max_workers", 5)), 5)  # 硬上限 5
+        while True:
+            wave = dag.get_wave(max_concurrent)
+            if not wave:
+                break
+
+            # 构建子任务, 注入角色系统提示
+            subtasks = []
+            for node in wave:
+                system_extra = ""
+                if get_role_fn:
+                    role = get_role_fn(node.role)
+                    if role:
+                        system_extra = role.to_system_extra()
+                # 注入黑板上下文
+                board_ctx = board.context_block()
+                prompt = node.prompt
+                if board_ctx and board_ctx != "(黑板暂无内容)":
+                    prompt = f"[共享黑板上下文]\n{board_ctx}\n\n[你的任务] {prompt}"
+                subtasks.append(SubTask(
+                    task_id=node.task_id, prompt=prompt,
+                    meta={"system_extra": system_extra, "role": node.role},
+                ))
+                dag.mark_running(node.task_id)
+
+            results = pool.dispatch(subtasks, stream=stream)
+
+            # 写回黑板
+            for r in results:
+                board.write(r.task_id, r.output or f"(失败: {r.error})", sender=r.task_id)
+                dag.mark_completed(r.task_id, r.output)
+                all_results.append(r)
+
+        # 4. 结果聚合 + 矛盾检测
+        try:
+            factory = kernel.get("result_aggregator_factory")
+            aggregator = factory() if factory else ResultAggregator()
+            for r in all_results:
+                role_id = "unknown"
+                dag_node = dag.get_node(r.task_id)
+                if dag_node:
+                    role_id = dag_node.role
+                aggregator.add_result(
+                    task_id=r.task_id, agent_id="subagent",
+                    content=r.output, role=role_id,
+                    elapsed=r.elapsed,
+                )
+            agg = aggregator.aggregate()
+        except Exception:  # noqa: BLE001
+            agg = None
+
+        # 5. 强模型验收
+        results_text = SubAgentPool.aggregate(all_results, title="子任务产物")
+        accept_prompt = (
+            f"你是一个验收师。下面是多角色协作的执行结果。\n"
+            f"请综合、去重、纠正错误、给出最终交付物。\n\n"
+            f"## 原始任务\n{task}\n\n"
+            f"## 共享黑板\n{board.context_block()}\n\n"
+            f"## 各角色结果\n{results_text}"
+        )
+        if agg and agg.conflicts:
+            accept_prompt += "\n\n## ⚠️ 注意矛盾\n"
+            for c in agg.conflicts:
+                accept_prompt += f"- {c['description']}\n"
+
+        accepted = self.agent.run(accept_prompt, stream=stream) or results_text
+        return f"[DevLoop V2 · 多角色协作完成]\n\n{accepted}"

@@ -181,11 +181,11 @@ class Swarm:
         self.n_hint = max(2, min(n_hint, 8))
         # 并发度: 用户显式给了 max_workers 就用它; 否则用 n_hint 推导
         # (让 /swarm 目标 || 3 真的只并发 3 个弱模型, 而不是独立配置的默认 4)。
-        # 仍夹在 [1, 16] 防越界。
+        # 硬上限 5 (民用电脑带不动更多子代理)。
         if max_workers is None:
             cfg_max = int(config.get("agent.subagent_max_workers", 5))
             max_workers = min(self.n_hint, cfg_max)
-        self.max_workers = max(1, min(max_workers, 16))
+        self.max_workers = max(1, min(max_workers, 5))
 
     # ---------------------------------------------------------- 模型解析
 

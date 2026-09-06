@@ -66,13 +66,14 @@ _A_CHINA_MAINSTREAM: List[ProviderPreset] = [
         recommended_models=["deepseek-chat", "deepseek-reasoner", "deepseek-v4-flash"],
         docs_url="https://platform.deepseek.com/api-docs",
     ),
+    # OpenCode Zen (可选, 免费层有次数限制)
     ProviderPreset(
         name="opencode-zen",
         base_url="https://opencode.ai/zen/v1",
         model="deepseek-v4-flash-free",
         api_key_env="OPENCODE_ZEN_API_KEY",
-        desc="OpenCode Zen 免费层 (deepseek-v4-flash-free, 开箱即用, 50次/天)",
-        tier=1, free_tier=True, region="global", category="免费层",
+        desc="OpenCode Zen 免费层 (可选, 50次/天, 需自行注册获取 Key)",
+        tier=2, free_tier=True, region="global", category="免费层",
         recommended_models=["deepseek-v4-flash-free"],
         docs_url="https://opencode.ai/zen",
     ),
@@ -667,6 +668,16 @@ _F_SELF_HOSTED: List[ProviderPreset] = [
         tier=1, free_tier=True, region="global", category="本地部署",
         recommended_models=["qwen2.5", "llama3.3", "deepseek-v3"],
         docs_url="",
+    ),
+    ProviderPreset(
+        name="llamacpp",
+        base_url="http://localhost:8080/v1",
+        model="local-model",
+        api_key_env="LLAMACPP_API_KEY",
+        desc="llama.cpp 服务器 (OpenAI 兼容, 默认 :8080/v1, 本地推理零费用)",
+        tier=1, free_tier=True, region="global", category="本地部署",
+        recommended_models=["local-model", "qwen2.5", "llama3.1", "deepseek-v3"],
+        docs_url="https://github.com/ggml-org/llama.cpp",
     ),
 ]
 

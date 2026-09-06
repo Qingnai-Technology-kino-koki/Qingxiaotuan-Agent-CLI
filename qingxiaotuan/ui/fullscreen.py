@@ -89,6 +89,10 @@ class FullScreenTUI:
             )
             if is_test_or_ci or not getattr(sys.stdout, "isatty", lambda: False)():
                 output = DummyOutput()
+            elif os.name == "nt":
+                # Windows 原生体验 (Major #6): 真终端下先启用 VT 处理 + UTF-8 代码页
+                from ..tui.win_compat import enable_virtual_terminal
+                enable_virtual_terminal()
         except Exception:
             output = DummyOutput()
         self._log_control = FormattedTextControl(self._render_events)

@@ -33,7 +33,7 @@ class EchoModel(ModelAdapter):
             if m.get("role") == "user" and m.get("content"):
                 last_user = m["content"]
                 break
-        resp = ModelResponse(content=f"回声: {last_user[:50]}")
+        resp = ModelResponse(content=f"回声: {last_user}")
         if stream and on_token:
             on_token(resp.content)
         return resp

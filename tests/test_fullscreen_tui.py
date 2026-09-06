@@ -37,12 +37,17 @@ def test_fullscreen_tui_close_leaves_no_threads():
 
 
 def test_fullscreen_tui_renders_mascot_states():
+    """每个吉祥物状态都应把对应图标渲染到侧栏。
+
+    图标取自实现自身的映射表, 避免字形改版后断言再次过期。
+    """
+    from qingxiaotuan.ui.mascot import Mascot
+
     tui = _tui()
-    for state, marker in (("idle", "◡"), ("thinking", "◠"), ("working", "•"),
-                          ("alert", "⚠"), ("done", "✦")):
+    for state in ("idle", "thinking", "working", "alert", "done"):
         tui.set_mascot(state)
         rendered = "".join(text for _, text in tui._render_side())
-        assert marker in rendered
+        assert Mascot(state).state_icon() in rendered, f"{state} 图标未渲染"
 
 
 def test_fullscreen_tui_close_is_idempotent():

@@ -25,8 +25,8 @@ from .provider_catalog import (
 
 __all__ = [
     "ModelAdapter", "ModelCapabilities", "ModelResponse", "ToolCall",
-    "OpenAICompatAdapter", "AnthropicAdapter",
-    "create_adapter", "KNOWN_PROVIDERS", "is_known_provider", "PROVIDER_PRESETS",
+    "OpenAICompatAdapter", "AnthropicAdapter", "KernelModelAdapter",
+    "create_adapter", "create_kernel_adapter", "KNOWN_PROVIDERS", "is_known_provider", "PROVIDER_PRESETS",
     "ALL_PROVIDERS", "ALL_PROVIDER_NAMES", "PROVIDER_CATEGORIES",
     "ProviderPreset", "get_provider", "get_provider_models", "search_providers",
     "get_free_providers", "get_cn_providers", "get_global_providers",
@@ -38,7 +38,7 @@ __all__ = [
 KNOWN_PROVIDERS = tuple(list(ALL_PROVIDER_NAMES) + ["openai-compatible", "anthropic-gw"])
 
 # 48 家开箱即用的供应商预设: 选了就自动带好 base_url / 推荐模型 / 密钥变量。
-# 用户 `qxt model` 直接挑一家即可, 不用手填任何地址。
+# 用户 `qxt models` 直接挑一家即可, 不用手填任何地址。
 # 保持向后兼容: 旧代码中 `PROVIDER_PRESETS["deepseek"]` 仍可工作。
 PROVIDER_PRESETS: Dict[str, Dict[str, str]] = {
     p.name: p.to_dict() for p in ALL_PROVIDERS
@@ -70,9 +70,28 @@ def create_adapter(config) -> ModelAdapter:
       OpenAICompatAdapter (chat/completions + tools 协议统一)。
     - 未知 provider 不再抛 ValueError, 而是按 openai-compatible 网关处理;
       缺失 base_url 时给清晰报错, 引导用户填网关地址。
+    - 若 model.backend 设为 "kernel"，改用自研 kernel ChatProvider 后端
+      (统一 ChatProvider 接口 + 顶层 generate 聚合器 + ProviderService)，默认仍为 legacy 不破坏现状。
     """
+    # ---- 可插拔后端开关：kernel 走自研 provider 架构；默认 legacy 保持现状 ----
+    if config.get("model.backend", "legacy") == "kernel":
+        from .kernel_adapter import create_kernel_adapter
+
+        return create_kernel_adapter(config)
+
     provider = config.get("model.provider", "deepseek")
     base_url = config.get("model.base_url")
+    # ---- 思考型模型智能放宽读超时 ----
+    # 这类模型思考期可能长时间不吐 token, 分片空闲一旦超过 read_timeout 就被
+    # httpx 判超时 → 反复重试 → "卡死"。按其名特征放宽到验证上限 600s。
+    _model_name = (config.get("model.model", "") or "").lower()
+    _REASONING_HINTS = (
+        "reasoner", "gemini-2.0-flash-thinking", "gemini-2.5", "thinking",
+        "deepseek-r1", "o1", "o3", "claude-thinking",
+    )
+    read_timeout = float(config.get("model.read_timeout", 300.0))
+    if any(h in _model_name for h in _REASONING_HINTS):
+        read_timeout = max(read_timeout, 600.0)
     if not is_known_provider(provider):
         # 未知 provider = 用户自定义的 OpenAI 兼容网关 (Claude/Gemini/本地等)。
         # 必须给出 base_url, 否则无从连接。
@@ -80,8 +99,8 @@ def create_adapter(config) -> ModelAdapter:
             raise ValueError(
                 f"未知模型 provider: {provider!r} (不在内置清单 {', '.join(KNOWN_PROVIDERS)})。\n"
                 f"若它是 OpenAI 兼容网关, 请在 model.base_url 填网关地址, 例如:\n"
-                f"  qxt model set {provider} <model> https://your-gateway/v1\n"
-                f"或先用已知 provider: qxt model set openai-compatible <model> <base_url>"
+                f"  qxt models set {provider} <model> https://your-gateway/v1\n"
+                f"或先用已知 provider: qxt models set openai-compatible <model> <base_url>"
             )
     # 显式标注共同基类: 否则 mypy 会按 anthropic 分支把变量收窄成
     # type[AnthropicAdapter], else 分支赋 OpenAICompatAdapter 即报不兼容。
@@ -99,6 +118,19 @@ def create_adapter(config) -> ModelAdapter:
         max_tokens=config.get("model.max_tokens", 8192),
         timeout=config.get("model.timeout", 120),
         connect_timeout=config.get("model.connect_timeout", 10.0),
-        read_timeout=config.get("model.read_timeout", 120.0),
+        read_timeout=read_timeout,
         prompt_cache=config.get("model.prompt_cache", True),
     )
+
+
+# 自研 kernel 后端（供 model.backend=kernel 使用）——惰性导出:
+# kernel 包会加载整套供应商目录 (~200ms), 只在真正用到时才 import,
+# 避免拖慢 config/light 命令的启动。
+_KERNEL_EXPORTS = ("KernelModelAdapter", "create_kernel_adapter")
+
+
+def __getattr__(name: str):
+    if name in _KERNEL_EXPORTS:
+        from .kernel_adapter import KernelModelAdapter, create_kernel_adapter
+        return KernelModelAdapter if name == "KernelModelAdapter" else create_kernel_adapter
+    raise AttributeError(f"module {__name__!r} has no attribute {name!r}")

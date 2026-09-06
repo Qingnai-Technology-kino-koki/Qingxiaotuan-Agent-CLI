@@ -17,7 +17,7 @@ from .tools import (
     ToolRegistryPlugin, FilesystemPlugin, ShellPlugin, WebPlugin, CodeToolPlugin,
     MemoryToolPlugin, SkillToolPlugin, LanguagePlugin, ExternalToolsPlugin,
     DispatchPlugin, PipelinePlugin, CodeReviewPlugin, CheckpointPlugin,
-    TaskToolPlugin, SessionToolsPlugin,
+    TaskToolPlugin, SessionToolsPlugin, CodeGraphPlugin, BackendDevPlugin, SandboxPlugin,
 )
 from .memory.plugin import MemoryPlugin, SessionPlugin
 from .skills import SkillManager
@@ -27,17 +27,27 @@ from .models.plugin import ModelPlugin
 from .cron import CronPlugin
 from .self_improve import SelfImprovePlugin
 from .audit.plugin import AuditPlugin
+from .codedev import CodeDevPlugin
 from .tools.mcp import MCPPlugin
 from .tools.subagent_tool import SubagentPlugin
 from .tools.messaging_tool import MessagingPlugin
 from .tools.workflow_tool import WorkflowPlugin
 from .tools.artifact_tool import ArtifactPlugin
+from .core.security_plugin import SecurityPlugin
+from .core.collaboration_plugin import CollaborationPlugin
+from .arch.plugin import ArchPlugin
 
 logger = logging.getLogger(__name__)
 
 
 def build_kernel(profile: str = "default", patch_file: Optional[str] = None) -> Kernel:
     """构建微内核, 注册所有插件。"""
+
+    def _kernel_patch_plugin():
+        # 惰性: 仅在内核构建层面需要时才 import 补丁层, 避免拖累纯 CLI 冷启动
+        from .kernel_patch.plugin import KernelPatchPlugin
+        return KernelPatchPlugin()
+
     kernel = Kernel()
 
     # 核心插件: 配置 -> 工具 -> 模型 -> 记忆 -> 技能 -> 上下文 -> 定时 -> 审计 -> 自我改进
@@ -70,6 +80,20 @@ def build_kernel(profile: str = "default", patch_file: Optional[str] = None) -> 
     kernel.register(MessagingPlugin())
     kernel.register(WorkflowPlugin())
     kernel.register(ArtifactPlugin())
+    # 代码开发工具集: 依赖图 / 后端模板生成 / 沙箱执行 (此前未注册, 模型拿不到)
+    kernel.register(CodeGraphPlugin())
+    kernel.register(BackendDevPlugin())
+    kernel.register(SandboxPlugin())
+    # 代码开发子系统: 检索增强 + 验证闸门 + 规格分解编排（对标 Claude Code 的底层能力, 非 loop）
+    kernel.register(CodeDevPlugin())
+    # 安全子系统插件: 分类器/网络守卫/事件总线/MCP加固
+    kernel.register(SecurityPlugin())
+    # 多 Agent 协作子系统插件: 协作协议/角色注册/结果聚合
+    kernel.register(CollaborationPlugin())
+    # 五层架构插件: 安全/执行/编排/上下文/可观测 (可插拔, 一等公民服务)
+    kernel.register(ArchPlugin())
+    # 内核补丁层 (扩展增强模块层): 对现有实现注入可回滚/可审计补丁
+    kernel.register(_kernel_patch_plugin())
 
     kernel.activate_all()
 
@@ -115,6 +139,19 @@ def create_agent(
     # 写类工具执行前自动快照、异常自动回滚、支持精细 undo (最小影响半径的事后可逆闭环)。
     from .core.ledger import MutationLedger
     agent.ctx.ledger = MutationLedger(workspace, config)
+    # 自动检查点存储: 每次写工具成功后自动建点 (30天TTL / 三恢复模式 / 摘要),
+    # 依托账本快照, 跨会话持久化于 .qxt/checkpoints/。注册为内核服务供工具执行器勾取。
+    try:
+        from .core.checkpoint_store import CheckpointStore
+        existing = kernel.get("checkpoint_store")
+        if existing is None:
+            _cps = CheckpointStore(workspace, agent.ctx.ledger, config)
+            kernel.provide("checkpoint_store", _cps, owner="app")
+        else:
+            _cps = existing
+        agent.ctx.checkpoint_store = _cps
+    except Exception:  # noqa: BLE001
+        agent.ctx.checkpoint_store = None
     # 用户级 Hooks: 让用户在工具执行前/后挂载脚本, 把 Agent 变成可编排的。
     # 安全: 命令强制 list(argv), 超时强杀, 阻断/改参权需显式声明 (fail-safe, 不阻断)。
     try:

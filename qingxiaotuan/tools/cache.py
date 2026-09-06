@@ -33,7 +33,7 @@ class ToolResultCache:
         self._store: Dict[str, _Entry] = {}
 
     @staticmethod
-    def _key(name: str, arguments_json: str) -> str:
+    def _key(name: str, arguments_json: str, workspace: str = "") -> str:
         norm = arguments_json
         try:
             # 参数顺序无关化: 排序 key 后重新序列化, 让 {a:1,b:2} 与 {b:2,a:1} 命中同一缓存
@@ -41,13 +41,16 @@ class ToolResultCache:
             norm = json.dumps(obj, sort_keys=True, ensure_ascii=False)
         except (json.JSONDecodeError, TypeError):
             norm = arguments_json
-        raw = f"{name}\x00{norm}"
+        # workspace 纳入键: 只读工具的结果可能依赖工作区 (如相对路径/索引),
+        # 否则切换工作区后会命中上一个工作区的陈旧结果 (stale)。
+        raw = f"{name}\x00{workspace}\x00{norm}"
         return hashlib.sha1(raw.encode("utf-8")).hexdigest()[:24]
 
-    def get(self, name: str, arguments_json: str, dangerous: bool = False) -> Optional[str]:
+    def get(self, name: str, arguments_json: str, dangerous: bool = False,
+            workspace: str = "") -> Optional[str]:
         if dangerous:
             return None
-        key = self._key(name, arguments_json)
+        key = self._key(name, arguments_json, workspace)
         entry = self._store.get(key)
         if entry is None:
             return None
@@ -56,12 +59,13 @@ class ToolResultCache:
             return None
         return "[缓存] " + entry.result
 
-    def put(self, name: str, arguments_json: str, result: str, dangerous: bool = False) -> None:
+    def put(self, name: str, arguments_json: str, result: str, dangerous: bool = False,
+            workspace: str = "") -> None:
         if dangerous:
             return
         if self.ttl <= 0:
             return
-        key = self._key(name, arguments_json)
+        key = self._key(name, arguments_json, workspace)
         self._store[key] = _entry(result, time.time() + self.ttl)
         # 简单 LRU 裁剪: 超出上限删最旧
         if len(self._store) > self.max_entries:

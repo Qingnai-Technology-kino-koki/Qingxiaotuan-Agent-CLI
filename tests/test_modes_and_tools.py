@@ -116,15 +116,25 @@ def test_move_and_delete_file(tmp_path):
 def test_mcp_tool_bridge():
     reg = ToolRegistry()
 
+    class _AllowAllPolicy:
+        """与真实 MCPClient.security_policy 的最小契约: 全部放行, 不需确认。"""
+        def check_tool_allowed(self, name):
+            return True, ""
+        def requires_confirm(self, name):
+            return False
+
     class FakeClient:
         name = "demo"
+        security_policy = _AllowAllPolicy()
         def list_tools(self):
             return [{"name": "ping", "description": "pong", "inputSchema": {"type": "object", "properties": {}}}]
         def call_tool(self, name, args):
             return f"called {name} with {args}"
 
     from qingxiaotuan.tools.mcp.plugin import MCPPlugin
-    MCPPlugin._register_tool(reg, FakeClient(), FakeClient().list_tools()[0])
+    # _register_tool 是实例方法 (self, registry, client, spec); 用最小桩实例承载 _safe_names
+    _stub = type("StubPlugin", (), {"_safe_names": False, "_engine": None})()
+    MCPPlugin._register_tool(_stub, reg, FakeClient(), FakeClient().list_tools()[0])
     tool = reg.get("mcp__demo__ping")
     assert tool is not None
     assert tool.description == "pong"

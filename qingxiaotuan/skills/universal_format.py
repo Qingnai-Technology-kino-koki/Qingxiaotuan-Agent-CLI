@@ -101,7 +101,7 @@ FORMAT_DETECTORS: List[Tuple[str, Callable[[Path], bool]]] = [
     # rules/*.md (Cursor Rules 目录)
     ("cursor_rules_dir", lambda p: "rules" in p.parts and p.suffix == ".md" and p.parent.name == "rules"),
     # Markdown with frontmatter (通用兜底)
-    ("generic_frontmatter", lambda p: p.suffix == ".md" and _FRONT_RE.match(p.read_text(encoding="utf-8", errors="ignore")[:2000] or "")),
+    ("generic_frontmatter", lambda p: bool(p.suffix == ".md" and _FRONT_RE.match(p.read_text(encoding="utf-8", errors="ignore")[:2000] or ""))),
 ]
 
 

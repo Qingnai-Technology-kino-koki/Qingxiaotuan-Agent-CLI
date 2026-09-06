@@ -27,8 +27,13 @@ def _write_config(home: Path, port: int) -> None:
 
 
 def _qxt_bin() -> str:
-    """venv 里安装的 qxt 控制台脚本 (真实入口接线)。"""
-    return str(Path(sys.executable).resolve().parent / "qxt.exe")
+    """venv 里安装的 qxt 控制台脚本 (真实入口接线, 跨平台)。"""
+    bin_dir = Path(sys.executable).resolve().parent
+    qxt = bin_dir / ("qxt.exe" if os.name == "nt" else "qxt")
+    if qxt.exists():
+        return str(qxt)
+    # 回退: 用 Python 模块入口直接跑
+    return sys.executable
 
 
 def test_cli_run_headless_with_mock_server(tmp_path, qxt_home, mock_server):

@@ -1,10 +1,10 @@
-"""CLI 开箱即用简化测试 (Task: qxt 直接开界面 / qxt --yolo / qxt model 12家)。
+"""CLI 开箱即用简化测试 (Task: qxt 直接开界面 / qxt --yolo / qxt models 48家)。
 
 验证:
 - 顶层 --yolo 被 main() 转成 mode=yolo 并交给 cmd_chat;
 - 顶层 --model 透传给 cmd_chat;
-- qxt model 无子命令时进入交互选择 (PROVIDER_PRESETS 驱动);
-- qxt model set 用预设自动带好 base_url / api_key_env。
+- qxt models 无子命令时进入交互选择 (PROVIDER_PRESETS 驱动);
+- qxt models set 用预设自动带好 base_url / api_key_env。
 """
 
 import sys
@@ -15,6 +15,7 @@ sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
 
 from qingxiaotuan.cli.parser import build_parser
 from qingxiaotuan.cli import commands
+from qingxiaotuan.cli import cmd_chat
 from qingxiaotuan.models import PROVIDER_PRESETS
 
 
@@ -46,9 +47,9 @@ def test_top_level_model_passthrough():
 
 
 def test_model_no_subcommand_triggers_interactive_chooser(tmp_path):
-    """qxt model 无子命令应进入交互选择; 模拟选第1家(deepseek)并默认模型。"""
+    """qxt models 无子命令应进入交互选择; 模拟选第1家(deepseek)并默认模型。"""
     written = {}
-    orig_set_user = commands.Config.set_user
+    orig_set_user = cmd_chat.Config.set_user
     def fake_set_user(self, dotted, value):
         written[dotted] = value
         # 同步内存视图, 避免后续读不到
@@ -57,9 +58,9 @@ def test_model_no_subcommand_triggers_interactive_chooser(tmp_path):
         for k in keys[:-1]:
             node = node.setdefault(k, {})
         node[keys[-1]] = value
-    with mock.patch.object(commands.Config, "set_user", fake_set_user), \
+    with mock.patch.object(cmd_chat.Config, "set_user", fake_set_user), \
          mock.patch("builtins.input", side_effect=["1", "", "", ""]):  # 分类/供应商/模型/API Key 均用默认
-        rc = commands.cmd_model(build_parser().parse_args(["model"]))
+        rc = commands.cmd_model(build_parser().parse_args(["models"]))
     assert rc == 0
     assert written.get("model.provider") == "deepseek"
     assert written.get("model.model") == "deepseek-chat"
@@ -76,9 +77,9 @@ def test_model_set_uses_explicit_values():
         for k in keys[:-1]:
             node = node.setdefault(k, {})
         node[keys[-1]] = value
-    with mock.patch.object(commands.Config, "set_user", fake_set_user):
+    with mock.patch.object(cmd_chat.Config, "set_user", fake_set_user):
         rc = commands.cmd_model(build_parser().parse_args(
-            ["model", "set", "openai", "gpt-4o", "https://api.openai.com/v1", "OPENAI_API_KEY"]))
+            ["models", "set", "openai", "gpt-4o", "https://api.openai.com/v1", "OPENAI_API_KEY"]))
     assert rc == 0
     assert written["model.provider"] == "openai"
     assert written["model.model"] == "gpt-4o"
@@ -95,9 +96,9 @@ def test_model_set_autofills_preset_base_url_and_key_env():
         for k in keys[:-1]:
             node = node.setdefault(k, {})
         node[keys[-1]] = value
-    with mock.patch.object(commands.Config, "set_user", fake_set_user):
+    with mock.patch.object(cmd_chat.Config, "set_user", fake_set_user):
         rc = commands.cmd_model(build_parser().parse_args(
-            ["model", "set", "openrouter", "stealth/ox-alpha"]))
+            ["models", "set", "openrouter", "stealth/ox-alpha"]))
     assert rc == 0
     assert written["model.provider"] == "openrouter"
     assert written["model.model"] == "stealth/ox-alpha"

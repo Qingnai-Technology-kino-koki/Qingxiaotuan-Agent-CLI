@@ -1,4 +1,4 @@
-"""自定义斜杠命令 (<QXT_HOME>/commands/*.md 与 <workspace>/.qxt/commands/*.md)。
+"""自定义斜杠命令 (<QXT_HOME>/commands、<workspace>/.qxt/commands、<workspace>/.claude/commands)。
 
 对标 Claude Code 的自定义 slash commands: 用户放一个 Markdown 文件即获得一条
 /文件名 命令, 无需改 CLI 代码。frontmatter 支持 description / argument-hint;
@@ -19,6 +19,7 @@ commands.py 是禁改稳定面, 故用运行期包装注入; 命令表存模块�
 
 from __future__ import annotations
 
+import os
 import re
 import subprocess
 from dataclasses import dataclass
@@ -44,7 +45,12 @@ class UserCommand:
 
 
 def command_dirs(config: Any, workspace: str = "") -> List[Path]:
-    """两级来源: 用户级 <home>/commands → 项目级 <workspace>/.qxt/commands。"""
+    """指令来源: 用户级 <home>/commands → 项目级 .qxt/commands → 项目级 .claude/commands。
+
+    末尾目录优先级最高 (加载时表[名称]被后续覆盖) —— Claude Code 的标准位置
+    <workspace>/.claude/commands 放在最末, 使从 Claude Code 迁移的用户命令
+    开箱即用且不违法既有 .qxt 语义。
+    """
     dirs: List[Path] = []
     home = getattr(config, "home", None)
     if home is None:
@@ -53,6 +59,7 @@ def command_dirs(config: Any, workspace: str = "") -> List[Path]:
     dirs.append(Path(home) / "commands")
     if workspace:
         dirs.append(Path(workspace) / ".qxt" / "commands")
+        dirs.append(Path(workspace) / ".claude" / "commands")
     return dirs
 
 
@@ -126,7 +133,7 @@ def expand_command(uc: UserCommand, arg: str, workspace: str = "",
             proc = subprocess.run(
                 cmd, shell=True, capture_output=True, text=True,
                 cwd=workspace or None, timeout=_SHELL_TIMEOUT,
-                env={**__import__("os").environ, **(extra_env or {})},
+                env={**os.environ, **(extra_env or {})},
             )
             out = (proc.stdout or "").strip()
             err = (proc.stderr or "").strip()
@@ -170,7 +177,7 @@ def install_user_commands(agent: Any, config: Any, workspace: str = "") -> int:
             arg = parts[1] if len(parts) > 1 else ""
             uc = _TABLE.get(head[1:]) if head.startswith("/") else None
             if uc is None:
-                return orig(cmd_text, agent_, config_, workspace_)
+                return bool(orig(cmd_text, agent_, config_, workspace_))
             expanded = expand_command(uc, arg, workspace_)
             # 复用主循环的 UI 实例与回合执行器: REPL 下与普通输入完全同路径;
             # TUI 下直接写 console (alternate screen 显示可能简陋, 但功能完整)。
@@ -192,13 +199,13 @@ def _sync_ui_lists(table: Dict[str, UserCommand]) -> None:
     if not names:
         return
     try:
-        from . import repl as _repl
+        from ..ui import repl as _repl
         new = [n for n in names if n not in _repl._SLASH_COMMANDS]
         _repl._SLASH_COMMANDS.extend(new)
     except Exception:  # noqa: BLE001
         pass
     try:
-        from . import fullscreen as _fs
+        from ..ui import fullscreen as _fs
         new = [n for n in names if n not in _fs._SLASH_COMMANDS]
         _fs._SLASH_COMMANDS.extend(new)
     except Exception:  # noqa: BLE001
@@ -207,7 +214,7 @@ def _sync_ui_lists(table: Dict[str, UserCommand]) -> None:
     import qingxiaotuan.cli.commands as _cmds
     marker = "\n\n## 自定义斜杠命令"
     if marker not in _cmds._HELP:
-        lines = ["", "", "自定义斜杠命令 (<QXT_HOME>/commands 与 <工作区>/.qxt/commands 的 *.md):"]
+        lines = ["", "", "自定义斜杠命令 (<QXT_HOME>/commands、<工作区>/.qxt/commands、<工作区>/.claude/commands 的 *.md):"]
         for n in names:
             uc = table[n[1:]]
             hint = f" [{uc.argument_hint}]" if uc.argument_hint else ""

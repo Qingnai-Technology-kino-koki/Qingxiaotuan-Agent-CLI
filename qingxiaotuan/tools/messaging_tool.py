@@ -33,7 +33,7 @@ def _send_message(ctx: ToolContext, to: str, message: str) -> str:
     session_id = ctx.config("_session_id", "")
     if not session_id:
         session_id = uuid.uuid4().hex[:8]
-        ctx.kernel._services["_session_id"] = session_id
+        ctx.kernel.provide("_session_id", session_id)
         bus.register(session_id, meta={"workspace": ctx.workspace})
 
     # 查找目标会话
@@ -56,7 +56,7 @@ def _receive_messages(ctx: ToolContext) -> str:
     session_id = ctx.config("_session_id", "")
     if not session_id:
         session_id = uuid.uuid4().hex[:8]
-        ctx.kernel._services["_session_id"] = session_id
+        ctx.kernel.provide("_session_id", session_id)
         bus.register(session_id, meta={"workspace": ctx.workspace})
 
     messages = bus.receive(session_id)
@@ -78,7 +78,7 @@ def _list_agents(ctx: ToolContext) -> str:
     session_id = ctx.config("_session_id", "")
     if not session_id:
         session_id = uuid.uuid4().hex[:8]
-        ctx.kernel._services["_session_id"] = session_id
+        ctx.kernel.provide("_session_id", session_id)
         bus.register(session_id, meta={"workspace": ctx.workspace})
     else:
         bus.heartbeat(session_id)

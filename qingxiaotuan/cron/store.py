@@ -9,6 +9,7 @@ from __future__ import annotations
 import json
 import os
 import tempfile
+import threading
 import time
 import uuid
 from pathlib import Path
@@ -20,6 +21,12 @@ class CronStore:
         self.dir = home / "cron"
         self.dir.mkdir(parents=True, exist_ok=True)
         self.file = self.dir / "jobs.json"
+        # _read + _write 是非原子的读改写序列。多线程并发 add / remove 会:
+        # 1) 读回同一个过期列表 → 后写覆盖前写, 任务丢失;
+        # 2) 同时 os.replace 同一目标 → Windows 上 PermissionError, 任务丢失。
+        # 实测: 100 次并发 add 100 个 job, 最终只保留 22 个。
+        # 必须用 RLock 串行化所有读改写对。
+        self._lock = threading.RLock()
 
     def _read(self) -> List[Dict[str, Any]]:
         if not self.file.exists():
@@ -51,68 +58,76 @@ class CronStore:
                 pass
 
     def add(self, name: str, prompt: str, interval_minutes: int) -> Dict[str, Any]:
-        jobs = self._read()
-        job = {
-            "id": uuid.uuid4().hex[:8],
-            "name": name,
-            "prompt": prompt,
-            "interval_minutes": interval_minutes,
-            "last_run": 0,
-            "enabled": True,
-        }
-        jobs.append(job)
-        self._write(jobs)
+        with self._lock:
+            jobs = self._read()
+            job = {
+                "id": uuid.uuid4().hex[:8],
+                "name": name,
+                "prompt": prompt,
+                "interval_minutes": interval_minutes,
+                "last_run": 0,
+                "enabled": True,
+            }
+            jobs.append(job)
+            self._write(jobs)
         return job
 
     def remove(self, job_id: str) -> bool:
-        jobs = self._read()
-        kept = [j for j in jobs if j["id"] != job_id]
-        self._write(kept)
+        with self._lock:
+            jobs = self._read()
+            kept = [j for j in jobs if j["id"] != job_id]
+            self._write(kept)
         return len(kept) != len(jobs)
 
     def get(self, job_id: str) -> Optional[Dict[str, Any]]:
-        for j in self._read():
-            if j["id"] == job_id:
-                return j
-        return None
+        with self._lock:
+            for j in self._read():
+                if j["id"] == job_id:
+                    return j
+            return None
 
     def set_enabled(self, job_id: str, enabled: bool) -> bool:
-        jobs = self._read()
-        found = False
-        for j in jobs:
-            if j["id"] == job_id:
-                j["enabled"] = enabled
-                found = True
-        if found:
-            self._write(jobs)
+        with self._lock:
+            jobs = self._read()
+            found = False
+            for j in jobs:
+                if j["id"] == job_id:
+                    j["enabled"] = enabled
+                    found = True
+            if found:
+                self._write(jobs)
         return found
 
     def update(self, job_id: str, **fields: Any) -> bool:
-        jobs = self._read()
-        found = False
-        for j in jobs:
-            if j["id"] == job_id:
-                for k, v in fields.items():
-                    if v is not None:
-                        j[k] = v
-                found = True
-        if found:
-            self._write(jobs)
+        with self._lock:
+            jobs = self._read()
+            found = False
+            for j in jobs:
+                if j["id"] == job_id:
+                    for k, v in fields.items():
+                        if v is not None:
+                            j[k] = v
+                    found = True
+            if found:
+                self._write(jobs)
         return found
 
     def list(self) -> List[Dict[str, Any]]:
-        return self._read()
+        with self._lock:
+            return self._read()
 
     def due(self) -> List[Dict[str, Any]]:
         now = time.time()
-        return [
-            j for j in self._read()
-            if j.get("enabled") and now - j.get("last_run", 0) >= j["interval_minutes"] * 60
-        ]
+        with self._lock:
+            return [
+                j for j in self._read()
+                if j.get("enabled") and now - j.get("last_run", 0) >= j["interval_minutes"] * 60
+            ]
 
     def mark_run(self, job_id: str) -> None:
-        jobs = self._read()
-        for j in jobs:
-            if j["id"] == job_id:
-                j["last_run"] = time.time()
-        self._write(jobs)
+        with self._lock:
+            jobs = self._read()
+            for j in jobs:
+                if j["id"] == job_id:
+                    j["last_run"] = time.time()
+            self._write(jobs)

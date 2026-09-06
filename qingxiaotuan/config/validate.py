@@ -37,7 +37,7 @@ _RULES: List[Tuple[str, Any, Any]] = [
 
 _ENUM_RULES: List[Tuple[str, tuple]] = [
     ("mode.default", ("standard", "yolo")),
-    ("agent.effort", ("low", "medium", "high")),
+    ("agent.effort", ("low", "medium", "high", "xhigh", "max")),
     ("ui.theme", ("dark", "light")),
     ("context.compact_strategy", ("smart", "none")),
     ("agent.subagent_isolation", ("process", "thread")),

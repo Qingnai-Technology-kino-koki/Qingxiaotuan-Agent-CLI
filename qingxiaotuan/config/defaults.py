@@ -37,18 +37,6 @@ def load_builtin_soul() -> str:
 # 覆盖场景: 快速体验免费层 / 本地部署 / 企业级 / 低成本批量任务
 PRESET_PROFILES: Dict[str, Dict[str, Any]] = {
     # ---- 免费层: 零成本快速体验 ----
-    "opencode-zen": {
-        "model": {
-            "provider": "opencode-zen",
-            "base_url": "https://opencode.ai/zen/v1",
-            "model": "deepseek-v4-flash-free",
-            "api_key_env": "OPENCODE_ZEN_API_KEY",
-            "temperature": 0.6,
-            "max_tokens": 8192,
-            "stream": True,
-        },
-        "desc": "OpenCode Zen 免费层 (50次/天, 零成本体验)",
-    },
     "groq-free": {
         "model": {
             "provider": "groq",
@@ -208,6 +196,19 @@ PRESET_PROFILES: Dict[str, Dict[str, Any]] = {
         },
         "desc": "通用本地网关 (兼容 Ollama/vLLM/LM Studio)",
     },
+    # ---- 免费/极低价 ----
+    "opencode-zen": {
+        "model": {
+            "provider": "opencode-zen",
+            "base_url": "https://opencode.ai/zen/v1",
+            "model": "deepseek-v4-flash-free",
+            "api_key_env": "OPENCODE_ZEN_API_KEY",
+            "temperature": 0.7,
+            "max_tokens": 8192,
+            "stream": True,
+        },
+        "desc": "OpenCode Zen 免费层 (每日有限免费额度, 需注册获取 Key)",
+    },
 }
 
 DEFAULT_CONFIG: Dict[str, Any] = {
@@ -223,10 +224,9 @@ DEFAULT_CONFIG: Dict[str, Any] = {
         # 连接与超时 (秒)
         "timeout": 120,                  # 单次请求总体超时 (连接+读)
         "connect_timeout": 10.0,         # 建立 TCP/TLS 连接的最长等待
-        "read_timeout": 120.0,           # 等待首字节/流式分片的最长空闲
+        "read_timeout": 300.0,           # 等待首字节/流式分片的最长空闲; 思考型模型会在此之上放宽
         "max_retries": 3,                # 调用失败自动重试次数 (agent 层指数退避)
-        # 速率限制 (适配 OpenCode Zen 免费层: 1 req/s, 10/min, 50次/天 8点重置)
-        # 默认关闭 (opt-in): 付费模型无需限流, 开启后 agent 发送前会主动节流
+        # 速率限制: 默认关闭 (opt-in), 付费模型无需限流, 开启后 agent 发送前会主动节流
         "rate_limit": {
             "enabled": False,
             "max_requests_per_minute": 10,
@@ -234,11 +234,11 @@ DEFAULT_CONFIG: Dict[str, Any] = {
         },
         # 多 Agent 协作 (herdr 式: 强模型规划/验收, 弱模型并发执行):
         #   planner = 强模型 (拆解任务 + 验收汇总), provider 留空 = 复用主 model
-        #   worker  = 弱模型 (并发执行的"手"), 默认 opencode-zen 免费档
+        #   worker  = 弱模型 (并发执行的"手"), 默认复用主 model
         # 只有 provider 必填; model/base_url/api_key_env 缺省时从主 model 继承。
-        "planner": {"provider": ""},
-        "worker":  {"provider": "opencode-zen", "model": "deepseek-v4-flash-free",
-                    "base_url": "https://opencode.ai/zen/v1", "api_key_env": "OPENCODE_ZEN_API_KEY"},
+        # 经济模式: 强模型规划 + 弱模型执行, 大幅降低 token 成本
+        "planner": {"provider": ""},  # 留空 = 复用主 model
+        "worker":  {"provider": ""},  # 留空 = 复用主 model
     },
     "agent": {
         "max_iterations": 30,
@@ -246,6 +246,14 @@ DEFAULT_CONFIG: Dict[str, Any] = {
         "retry_backoff": 2.0,            # 退避基数 (秒), 第 n 次等待 backoff * 2^(n-1)
         "retry_jitter": 0.3,             # 退避抖动比例 (0~1), 避免惊群
         "retry_on": [408, 409, 429, 500, 502, 503, 504],  # 这些状态码才重试
+        # 熔断器 (第三道韧性防线): 连续失败达阈值后快速失败, 不再浪费重试预算打已故障上游。
+        # 默认关闭 (enabled=False), 与历史行为完全一致; 长任务 / 弱网场景可开启。
+        "circuit_breaker": {
+            "enabled": False,
+            "failure_threshold": 5,     # 连续失败几次后熔断
+            "cooldown": 30.0,           # 熔断后冷却秒数, 期间所有调用快速失败
+            "success_threshold": 1,     # 半开期连续成功几次后恢复 (CLOSED)
+        },
         "skill_nudge_interval": 3,      # 每 N 个 turn 提醒一次技能蒸馏 (Hermes 闭环)
         "context_max_messages": 60,      # 超出后触发上下文压缩
         "auto_memory": True,             # 会话结束自动固化重要事实
@@ -262,6 +270,12 @@ DEFAULT_CONFIG: Dict[str, Any] = {
         "subagent_max_workers": 5,        # 子 Agent 并发上限 (1~16)
         "subagent_timeout": 180,          # 单个子任务超时 (秒)
         "subagent_isolation": "process",  # process=进程级沙箱(生产默认) / thread=线程软隔离
+    },
+    # 可观测性: 默认全关, 开启后不产生任何行为变化, 仅在会话内累积 trace/span 与指标 (供 /stats 查看)。
+    "observability": {
+        "telemetry": {
+            "enabled": False,  # 开启后 Agent 循环的每次模型调用/工具调用都生成 span 并统计延迟/错误率
+        },
     },
     "context": {
         "auto_index": True,              # 进入 chat 时自动索引工作区结构
@@ -289,6 +303,22 @@ DEFAULT_CONFIG: Dict[str, Any] = {
         "filesystem": {"enabled": True, "require_confirm_write": False},
         "web": {"enabled": True, "timeout": 30},
         "cache_ttl": 60.0,                 # 只读工具结果缓存 TTL (秒, 0=关闭)
+    },
+    # 联网 / 搜索基础设施。可通过 `qxt network configuration`(== `qxt net con`)查看与设定。
+    "network": {
+        "search_max_results": 500,         # 单次搜索最多可返回的网页数上限 (最高 500)
+        "search_default_results": 5,       # 未指定 max_results 时的默认返回条数
+        "search_top_k": 5,                 # 进入上下文的最相关条数 (token 节省: 采多、注精)
+        "search_snippet_max_chars": 200,   # 每条摘要进入上下文前的最大字符数 (token 节省)
+        "search_max_pages": 25,            # 分页请求页数上限 (每页约 20 条, 500/20=25)
+        # 磁盘缓存 (按 引擎+查询词+条数 分桶): 重复查询直接命中, 省网络与 token
+        "search_cache": True,              # 是否启用搜索结果磁盘缓存
+        "search_cache_ttl": 21600,         # 缓存有效期 (秒, 默认 6 小时)
+        "search_cache_dir": "~/.qingxiaotuan/cache/web",  # 缓存目录 (空串=禁用)
+        # 搜索引擎优先级 (主引擎失败/空结果自动切换下一个)
+        "search_engines": ["duckduckgo", "bing"],   # 顺序即优先级
+        "fetch_max_chars": 15000,          # web_fetch 抓取正文最大字符数 (token 节省)
+        "fetch_timeout": 30,               # 网络请求超时 (秒)
     },
     # 运行模式: standard (默认, 危险操作逐项确认) / yolo (全部自动批准, 风险自担)
     "mode": {
@@ -341,7 +371,31 @@ DEFAULT_CONFIG: Dict[str, Any] = {
     "mcp": {
         "enabled": True,
         "timeout": 30.0,           # 单次 MCP 调用超时 (秒)
-        "servers": [],             # MCP server 列表: {name, command, args, env}
+        "servers": [],             # MCP server 列表: {name, command, args, env, security}
+        "security": {
+            "max_calls_per_minute": 60,   # 全局频率限制
+            "audit_enabled": True,        # 启用审计日志
+        },
+    },
+    # 安全加固 (harden) 配置: 审计加密后端 / 网络出口策略 / MCP 加固
+    # 这些项此前仅靠 security_plugin 内联默认值读取, 现集中于此以便发现与覆盖。
+    "security": {
+        "crypto": {
+            "provider": "software",   # 审计日志加密后端: software(默认) / gmssl(国密SM4) / hsm(需实体, 不适用流式日志时降级)
+        },
+        "network": {
+            "allowed_domains": [],        # 仅允许出网的域名白名单 (空=不限制域名, 仅按红线/出口CIDR判断)
+            "blocked_domains": [],        # 额外禁止的域名 (叠加内置敏感域名)
+            "deny_remote_exec": True,     # 禁止 wget/curl | sh 等远程执行
+            "deny_data_exfil": True,      # 禁止向外部上传/外泄数据
+            "egress_cidr_allow": [],      # 出口 IP CIDR 白名单 (空=不限制; 含显式IP字面量越界即拒)
+            "one_way_mode": False,        # 单向模式: 禁止 nc -l/socat LISTEN/http.server/ssh -D/sshd 等入站监听
+        },
+        "mcp": {
+            "max_description_length": 10000,  # MCP 工具描述最大长度 (防提示词注入超长载荷)
+            "audit_enabled": True,            # 审计 MCP 调用
+            "block_on_injection": True,       # 检测到注入即阻断
+        },
     },
     # 自主反思循环 (Reflector): Plan→Execute→Reflect→Re-plan 闭环
     "reflector": {
@@ -355,6 +409,18 @@ DEFAULT_CONFIG: Dict[str, Any] = {
         # - mypy: pyproject.toml 中含 mypy 配置
         # - npm_test: 有 package.json 且含 test script
         # - eslint: 有 .eslintrc 配置
+    },
+    # 编码验证闭环 (Verify Loop): 写工具后自动跑测试/lint/类型检查, 失败则自修复
+    # 对标 Claude Code 的编码验证能力。
+    "verify": {
+        "enabled": True,              # 是否启用验证闭环
+        "auto": True,                 # 写工具后自动触发 (需要 agent 主循环配合)
+        "max_heal_rounds": 3,         # 最大自修复轮数 (超过则放弃并报告)
+        "checks": {                   # 可覆盖检查命令 (留空=按项目类型自动推断)
+            "test": "",               # 测试命令 (如 "python -m pytest -x -q")
+            "typecheck": "",           # 类型检查命令 (如 "mypy .")
+            "lint": "",               # lint 命令 (如 "ruff check .")
+        },
     },
     # 模型路由: 根据任务难度自动选择模型
     "router": {
@@ -410,9 +476,37 @@ DEFAULT_CONFIG: Dict[str, Any] = {
         # 支持事件: PreToolUse / PostToolUse / UserPromptSubmit / Stop /
         #   SubagentStop / PreCompact / SessionStart / SessionEnd
         "enabled": True,                 # 启用用户级 Hooks
-        "default_timeout": 5,            # 单个 hook 脚本超时 (秒), 超时强杀
+        "default_timeout": 30,           # 单个 hook 脚本超时 (秒), 超时强杀 (冷启动 Python 子进程需 >5s)
         "allow_blocking": True,          # 是否允许 PreToolUse hook 阻断工具执行 (需 hook 显式 blocking=true)
         "allow_edit_args": False,        # 是否允许 hook 改写工具参数 (默认关 = 更安全)
         "audit_log": True,               # 把 hook 调用写入审计事件 hook.executed
+    },
+    # 引擎调用隔离(进程级): 默认关闭, 维持既有「进程内直调」行为; 设为 true 后,
+    # 非安全判定类引擎可经 JSONL 子进程隔离执行(qxt ext 路径用的就是真子进程);
+    # 安全判定类引擎(safety)始终进程内(fail-closed), 不受此开关影响。
+    "engine": {
+        "isolation": False,              # 进程级隔离总开关 (opt-in)
+        "isolation_timeout": 30.0,       # 子进程 IPC 超时 (秒)
+    },
+    # 系统级沙箱子系统 (4 层"滤网"统一兜底, 默认开启):
+    #
+    #   L0 意图滤网   static 识别致命红线/网络外泄/远程执行  →  deny-critical
+    #   L1 信任滤网   工作区信任分级(trusted 放行 / untrusted 拒) + 计划模式 + 域名白名单
+    #   L2 资源滤网   网络开关 + 内存/超时 + 高危写走副本→diff→apply 隔离
+    #   L3 强隔离滤网  docker→bwrap(jobobject)→seatbelt→local 自动选后端, fail-closed
+    #
+    # 默认开启、trusted 工作区放行; 全部工具统一过这条流水线 (在 ToolExecutor 层堵侧门)。
+    "sandbox": {
+        "enabled": True,                 # 是否启用 4 层沙箱滤网流水线 (推荐保持 True)
+        "backend": "auto",               # 隔离后端: auto 自动按强度降序探测 docker→landlock→seatbelt→jobobject→local
+        "enforce_required": True,        # 需要强隔离但无强后端时 fail-closed 拒绝 (不静默降级裸执行)
+        "deny_unknown_shell": False,     # 未知信任且含 shell 的命令是否直接拒绝
+        "allowed_domains": [],           # 域名白名单 (叠加 security.network; 空=不限制)
+        "resource": {
+            "deny_network_by_default": False,   # 默认禁网: 含网络请求的命令改走无网隔离执行
+            "max_memory_mb": 0,                 # 强隔离内存上限 (MB, 0=不限)
+            "max_timeout": 0,                   # 强隔离超时上限 (秒, 0=用调用方默认)
+            "isolate_copy_threshold": "high",   # 高于等于该严重度(high/critical) 的写操作走副本→diff→apply
+        },
     },
 }

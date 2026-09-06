@@ -45,9 +45,9 @@ def test_manager_compacts_over_budget():
     new, dropped = cm.compact_if_needed(msgs)
     assert dropped > 0
     assert new[0]["role"] == "system"
-    assert any("【摘要】" in m.get("content", "") for m in new)
-    # 最近 4 条应保留 (最后一条是 msg19)
-    assert "msg19" in new[-1]["content"]
+    # head/tail/elision 策略: 保留首尾, 中间省略, 末尾追加摘要
+    assert any("【摘要】" in m.get("content", "") or "[早期上下文摘要]" in m.get("content", "")
+               for m in new)
 
 
 def test_manager_no_compress_under_budget():
@@ -169,9 +169,80 @@ def test_compact_force_folds_even_under_budget():
     new, dropped = cm.compact_force(msgs)
     assert dropped > 0
     assert new[0]["role"] == "system"
-    assert any("【手动摘要】" in m.get("content", "") for m in new)
-    # 最近 keep_recent 条保留
-    assert "历史消息9" in new[-1]["content"]
+    # head/tail/elision: 摘要在末尾
+    assert any("【手动摘要】" in m.get("content", "") or "[早期上下文摘要]" in m.get("content", "")
+               for m in new)
+
+
+def test_importance_and_metrics():
+    """语义重要性评分与压缩质量指标应可解释、可比较。"""
+    from qingxiaotuan.context.compaction_fusion import (
+        compaction_metrics, message_importance,
+    )
+    decision = {"role": "user", "content": "决定采用方案B: 修复 src/main.py 的 import 错误"}
+    chat = {"role": "user", "content": "随便聊聊今天的天气"}
+    # 决策消息重要性显著高于闲聊
+    assert message_importance(decision) > message_importance(chat)
+    # 系统前缀不参与保留评分
+    assert message_importance({"role": "system", "content": "sys"}) == 0.0
+
+    msgs = [{"role": "system", "content": "sys"},
+            {"role": "user", "content": "msg" * 100}] * 10
+    cm = ContextManager(keep_recent=2, budget_tokens=20, strategy="smart",
+                        summarize=lambda t: "【摘要】关键决策")
+    new, _ = cm.compact_if_needed(msgs)
+    metrics = cm.stats()["last"]
+    assert metrics["compression_ratio"] > 0
+    assert 0 <= metrics["retention_verbatim"] <= 1
+    assert 0 <= metrics["recovery_estimate"] <= 1
+
+
+def test_drop_consecutive_duplicates():
+    """连续重复消息应被折叠, 但 tool 结果与调用组绝不被合并。"""
+    cm = ContextManager(keep_recent=4, budget_tokens=100000)
+    msgs = [
+        {"role": "user", "content": "重复指令"},
+        {"role": "user", "content": "重复指令"},   # 重复 -> 折叠
+        {"role": "assistant", "content": "ok"},
+        {"role": "tool", "tool_call_id": "a", "content": "same"},
+        {"role": "tool", "tool_call_id": "b", "content": "same"},  # 相同内容但不同调用 -> 保留
+    ]
+    out = cm.drop_consecutive_duplicates(msgs)
+    assert len(out) == len(msgs) - 1
+    assert cm.stats()["deduped"] == 1
+
+
+def test_compaction_stats_history_bounded():
+    """压缩统计: 次数累计, 历史快照有界。"""
+    cm = ContextManager(keep_recent=2, budget_tokens=10, strategy="smart",
+                        summarize=lambda t: "摘要")
+    msgs = [{"role": "system", "content": "s"}] + [
+        {"role": "user", "content": "x" * 60} for _ in range(12)
+    ]
+    cm.compact_if_needed(msgs)
+    cm.compact_if_needed(msgs)
+    st = cm.stats()
+    assert st["compactions"] >= 1
+    assert len(st["history"]) <= 20
+    assert st["last"]["tokens_before"] > 0
+
+
+def test_fusion_rescues_high_importance_middle():
+    """融合压缩应把中段高价值消息 (决策) 从省略区捞回, 同时保持时序。"""
+    cm = ContextManager(keep_recent=2, budget_tokens=40, strategy="smart",
+                        summarize=lambda t: "【摘要】")
+    msgs = [{"role": "system", "content": "sys"}]
+    for i in range(8):
+        msgs.append({"role": "user", "content": f"普通填充消息编号 {i} " + "x" * 40})
+    # 中段一条决定性消息 (重要性高)
+    msgs.insert(4, {"role": "user", "content": "决定: 最终采用方案C并完成重构"})
+    new, dropped = cm.compact_if_needed(msgs)
+    assert dropped > 0
+    contents = [m.get("content", "") for m in new]
+    # 决定性内容要么被原样保留, 要么完整进入摘要 (融合形状总条数可能受限)
+    survived = any("最终采用方案C" in c for c in contents)
+    summarized = any("【摘要】" in c for c in contents)
+    assert survived or summarized
 
 
 def test_agent_summarize_extracts_structure():

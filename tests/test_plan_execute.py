@@ -4,6 +4,8 @@ from __future__ import annotations
 
 import os
 
+import pytest
+
 from qingxiaotuan.config import Config
 from qingxiaotuan.models.base import ModelCapabilities, ModelResponse, ToolCall
 from qingxiaotuan.core.agent import Agent
@@ -16,11 +18,71 @@ from tests.test_router import (
 )
 
 
+class _DummyAuto:
+    """最小 AutoRouter 契约桩: 按需返回 override / 记录观察调用。"""
+    enabled = True
+    plan_execute = True
+    escalate = False
+
+    def __init__(self, override: int = 0):
+        self._override = override
+        self.observed = 0
+
+    def decide_override(self, route_session):
+        return self._override
+
+    def observe_turn(self, route_session, tool_messages=None):
+        self.observed += 1
+
+
+class _StubAgent:
+    """满足 LoopProvider._maybe_override_model 需要的 agent 最小面。"""
+
+    def __init__(self, override: int = 0):
+        self._auto = _DummyAuto(override=override)
+        self._route_session = "session"
+        self.model = type("M", (), {"capabilities": type("C", (), {"vision": False})()})()
+        self.switched = []
+
+    def _maybe_route_model(self, user_input, override=None, has_images=False):
+        self.switched.append((user_input, override, has_images))
+
+
+def test_maybe_override_short_circuits_when_auto_disabled():
+    from qingxiaotuan.core.loop_provider import LoopProvider
+    agent = _StubAgent(override=2)
+    agent._auto.enabled = False  # 关路由时不应切换模型
+    LoopProvider._maybe_override_model(agent, "task")
+    assert agent.switched == []
+
+
+def test_maybe_override_switches_when_override_nonzero():
+    from qingxiaotuan.core.loop_provider import LoopProvider
+    agent = _StubAgent(override=2)
+    LoopProvider._maybe_override_model(agent, "task")
+    assert agent.switched == [("task", 2, False)]
+
+
+def test_maybe_override_noop_when_override_zero():
+    from qingxiaotuan.core.loop_provider import LoopProvider
+    agent = _StubAgent(override=0)
+    LoopProvider._maybe_override_model(agent, "task")
+    assert agent.switched == []
+
+
 _TIER3 = {"deepseek-reasoner", "gpt-4o", "grok-3", "claude-3-opus-20240229"}
 _TIER1 = {
     "deepseek-v4-flash-free", "llama-3.3-70b-versatile",
     "glm-4-flash", "qwen-plus", "doubao-1.5-pro-256k",
 }
+
+
+@pytest.fixture(autouse=True)
+def isolated_qxt_home(monkeypatch, tmp_path):
+    """隔离 QXT_HOME, 避免读到真实 ~/.qingxiaotuan/config.yaml (如 opencode-zen 配置),
+    保证路由测试的当前模型是默认 deepseek/deepseek-chat, 且 set_user 只写临时目录。"""
+    monkeypatch.setenv("QXT_HOME", str(tmp_path))
+    yield
 
 
 class _SeqModel:
@@ -57,10 +119,9 @@ def _switcher_recording(kernel):
     return switcher, switched
 
 
-def test_plan_execute_switches_strong_then_cheap():
+def test_plan_execute_switches_strong_then_cheap(monkeypatch):
     from qingxiaotuan.models.router import ModelRouter
-    import pytest
-    pytest.MonkeyPatch().setattr(
+    monkeypatch.setattr(
         ModelRouter, "available_provider_names",
         staticmethod(lambda: ["deepseek", "groq", "zhipu", "qwen", "doubao",
                                "openai", "gemini", "anthropic", "moonshot", "mistral", "xai"]),
@@ -78,16 +139,15 @@ def test_plan_execute_switches_strong_then_cheap():
     assert cheap, f"执行轮应切到便宜模型, 实际切换序列={switched}"
 
 
-def test_escalate_on_stuck_switches_back_to_strong():
+def test_escalate_on_stuck_switches_back_to_strong(monkeypatch):
     from qingxiaotuan.models.router import ModelRouter
-    import pytest
     from qingxiaotuan.tools.base import ToolResult
 
     class _FailingRegistry(_FakeRegistry):
         def dispatch(self, name, args, ctx):
             return ToolResult(status="error", content="boom", tool_name=name)
 
-    pytest.MonkeyPatch().setattr(
+    monkeypatch.setattr(
         ModelRouter, "available_provider_names",
         staticmethod(lambda: ["deepseek", "groq", "zhipu", "qwen", "doubao",
                                "openai", "gemini", "anthropic", "moonshot", "mistral", "xai"]),

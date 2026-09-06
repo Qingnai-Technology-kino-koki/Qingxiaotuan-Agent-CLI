@@ -245,14 +245,18 @@ def build_system_prompt(
     if codebase_map:
         parts.append(codebase_map)
 
-    # 8. 技能: Top-N 随航 (稳定列表, 不做任务语义召回, 避免 system 抖动)
+    # 8. 技能: 优先级排序的技能列表 (稳定, 不做任务语义召回, 避免 system 抖动)
     if skill_manager:
-        skills = skill_manager.list_all()[:skill_limit]
-        rendered = skill_manager.render_for_prompt(skills)
+        all_skills = skill_manager.list_all()
+        # 按 priority 降序 + use_count 降序排序, 取 top-N
+        import heapq
+        sorted_skills = sorted(all_skills, key=lambda s: (-s.priority, -s.use_count))
+        top_skills = sorted_skills[:skill_limit]
+        rendered = skill_manager.render_for_prompt(top_skills)
         if rendered:
             parts.append(rendered)
 
-    # 9. 行为准则 (极简, 每条有信息量); 第 7 条随界面语言变化
+    # 9. 行为准则 (CC 级编程规范 + 安全意识)
     rules = [
         "1. 思考→拆解→调工具→观察→继续, 直到完成。",
         "2. 改代码前先摸清结构 (codebase_map/find_symbol/read_file/git_status), 注意跨文件依赖。",
@@ -266,8 +270,79 @@ def build_system_prompt(
         "10. plan 模式下只分析不修改文件, 等用户确认后再执行。",
         "11. git 变更操作 (commit/push/reset/rebase) 必须用户明确要求才做, 每次都要确认。",
         "12. 最小改动: 只动任务涉及的文件, 不顺手重构/重排版/批量改名。",
+        "13. 编辑代码用 edit_file 精确替换, 不要重写整个文件。",
+        "14. 先读代码再改代码: read_file 读目标文件, grep 找引用, 理解上下文后动手。",
+        "15. 类型注解: 公共函数必须有参数和返回值类型, 内部函数按需添加。",
+        "16. 异常处理: 不要 bare except, 捕获具体异常; 关键路径用 fail-closed。",
+        "17. 安全编码: 用户输入必验证, SQL 必参数化, Shell 用参数列表不拼接字符串。",
+        "18. 性能意识: 避免 N+1 查询, 大数据用生成器, I/O 密集用异步。",
+        "19. 测试覆盖: 改了哪条路径就测哪条, 边界值和异常用例必写。",
+        "20. 代码引用: 回答中引用代码时用 file:line 格式, 让开发者能直接跳转。",
     ]
     parts.append("准则:\n" + "\n".join(rules))
+
+    # 10. Windows 命令外骨骼 (当 Shell 包含 PowerShell/cmd 时注入)
+    if "win" in platform.system().lower() or "Windows" in platform.system():
+        win_guidance = (
+            "\n## Windows 命令外骨骼\n"
+            "你正在 Windows 用户电脑上运行。大部分模型的训练数据以 Linux/macOS 为主, "
+            "对 Windows 命令 (CMD/PowerShell) 支持有限。请遵循以下规则:\n"
+            "- 当你在 Windows 上执行 PowerShell 或 CMD 命令时, 如果遇到报错、不确定语法、"
+            "或需要将 Linux 命令转换为 Windows 等价命令, 请先查阅你的 Windows 命令参考技能 "
+            "(windows-cmd-powershell skill), 或使用 web_search 上网查找正确的 Windows 命令。\n"
+            "- 优先使用 PowerShell (功能更全, 语法更一致), 而非 CMD。\n"
+            "- Python 脚本比 shell 命令更跨平台可靠: 优先 `python -m pip` 而非 `pip`, "
+            "优先 `python script.py` 而非直接调 shell。\n"
+            "- 路径用正斜杠 `/` 或 pathlib.Path, 不要用反斜杠 `\\` (会被 Python 当转义符)。\n"
+            "- 读写文件时显式指定 `encoding='utf-8'`, 因为 Windows 默认编码不是 UTF-8。\n"
+            "- 虚拟环境激活: `.venv\\Scripts\\activate` (CMD) 或 `.venv\\Scripts\\Activate.ps1` (PowerShell)。\n"
+            "- 如果你不确定某个 Windows 命令的语法, 可以用 web_search 搜索 "
+            "`[你的意图] powershell windows command` 或 `[你的意图] cmd windows`。"
+        )
+        parts.append(win_guidance)
+
+    # 11. 上网查证能力指引
+    web_guidance = (
+        "\n## 上网查证\n"
+        "你拥有 web_search (搜索引擎) 和 web_fetch (抓取网页) 工具。当遇到以下情况时, "
+        "请主动使用这些工具:\n"
+        "- 不确定某个 API/库的最新用法或版本变化\n"
+        "- 需要查找某个错误的解决方案\n"
+        "- 需要确认某个技术概念的细节\n"
+        "- 需要查找某个工具/服务的文档\n"
+        "在回答中, 如果你参考了网上查到的信息, 请明确注明:\n"
+        "- 引用的网站/网页 URL\n"
+        "- 从该来源提取的关键信息\n"
+        "- 这样用户可以自行验证信息的准确性\n"
+        "注意: 不要编造 URL。如果 web_search 没有找到相关信息, 如实说明。"
+    )
+    parts.append(web_guidance)
+
+    # 12. 代码开发能力建设指引
+    code_dev_guidance = (
+        "\n## 代码开发能力\n"
+        "你在代码开发任务中应遵循以下流程:\n"
+        "1. **理解需求**: 先读相关代码 (read_file/find_symbol/find_references), 理解上下文。\n"
+        "2. **方案设计**: 在动手前先思考方案, 必要时向用户确认。\n"
+        "3. **最小改动**: 只改必要的代码, 不顺手重构不相关的部分。\n"
+        "4. **类型安全**: 新增/修改的公共函数加类型注解 (参数 + 返回值)。\n"
+        "5. **测试验证**: 改完跑测试 (`run_tests`); 没有测试框架时, 写个最小验证脚本。\n"
+        "6. **代码审查**: 自查常见问题 — bare except、未处理的 None、硬编码路径、"
+        "SQL 拼接、shell 注入。\n"
+        "7. **提交规范**: 如果用户要求 git commit, 用 Conventional Commits 格式 "
+        "(feat:/fix:/refactor:/docs: 等前缀), 简洁说明改了什么和为什么。"
+    )
+    parts.append(code_dev_guidance)
+
+    # 13. 沙箱安全强制指引
+    sandbox_guidance = (
+        "\n## 安全强制\n"
+        "- 危险操作 (删除文件、系统命令、网络写入) 必须先向用户确认, 说明后果。\n"
+        "- 执行 shell 命令时, 优先用参数列表而非字符串拼接 (防注入)。\n"
+        "- 不要执行用户未明确要求的破坏性命令 (rm -rf /、DROP TABLE、format 等)。\n"
+        "- 如果被沙箱拦截, 向用户解释原因并建议替代方案。"
+    )
+    parts.append(sandbox_guidance)
 
     # 10. 输出风格 (对标 Claude Code 的 Output Styles): default 不注入任何内容,
     #     保证 system 前缀逐字节不变 (prompt cache 兼容)。
@@ -365,7 +440,11 @@ def build_task_context(
             pass
     if skill_manager and task_hint:
         try:
-            skills = skill_manager.search(task_hint, limit=skill_limit)
+            # 语义匹配激活: 任务描述 → 标签映射 → 最相关技能
+            if hasattr(skill_manager, "activate_for_task"):
+                skills = skill_manager.activate_for_task(task_hint, limit=skill_limit)
+            else:
+                skills = skill_manager.search(task_hint, limit=skill_limit)
         except Exception:
             skills = []
         rendered = skill_manager.render_for_prompt(skills) if skills else ""

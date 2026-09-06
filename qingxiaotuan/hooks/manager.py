@@ -2,7 +2,9 @@
 
 设计目标: 把 Agent 变成"可编排的", 同时把安全边界钉死:
 - command 必须是 list(argv), 拒绝裸字符串 (无 shell 注入面)。
-- 超时强杀 (subprocess.timeout), 异常 fail-safe (不阻断、只记录)。
+- 超时强杀 (看门狗线程 + 进程树强杀), 异常 fail-safe (不阻断、只记录)。
+  Windows 上 subprocess.run 的 timeout 杀进程并不可靠 (sleep 类子进程无法被及时回收,
+  导致 communicate() 永远阻塞); 故改用独立看门狗线程在超时后强制 taskkill /T 整棵树。
 - PreToolUse 阻断 / 改写参数 需显式声明 (blocking / allow_edit_args),
   全局 allow_blocking / allow_edit_args 可一键关闭。
 - 所有调用写入审计事件 hook.executed (供 self-improve / 观测订阅)。
@@ -13,7 +15,10 @@ from __future__ import annotations
 import fnmatch
 import json
 import logging
+import os
+import signal
 import subprocess
+import threading
 import time
 from dataclasses import dataclass, field
 from typing import Any, Dict, List, Optional
@@ -98,7 +103,7 @@ class HookManager:
         self.workspace = workspace
         self._kernel = kernel
         self.enabled = True
-        self.default_timeout = 5.0
+        self.default_timeout = 30.0
         self.allow_blocking = True
         self.allow_edit_args = False
         self.audit_log = True
@@ -109,7 +114,7 @@ class HookManager:
             self.enabled = False
             return
         self.enabled = bool(hooks_cfg.get("enabled", True))
-        self.default_timeout = float(hooks_cfg.get("default_timeout", 5))
+        self.default_timeout = float(hooks_cfg.get("default_timeout", 30))
         self.allow_blocking = bool(hooks_cfg.get("allow_blocking", True))
         self.allow_edit_args = bool(hooks_cfg.get("allow_edit_args", False))
         self.audit_log = bool(hooks_cfg.get("audit_log", True))
@@ -359,27 +364,98 @@ class HookManager:
             return self._exec_command(spec, payload)
 
     def _exec_command(self, spec: _HookSpec, payload: Dict[str, Any]) -> Optional[str]:
-        """执行传统 argv 脚本。"""
+        """执行传统 argv 脚本。
+
+        采用「看门狗线程 + 进程树强杀」而非 subprocess.run(timeout=...):
+        Windows 上 subprocess.run 的超时杀进程不可靠 —— 对已 sleep / 阻塞的子进程,
+        TerminateProcess 未必及时回收, 导致内部 communicate() 永久阻塞 (实测会挂死)。
+        看门狗在超时后强制 taskkill /T 整棵树, 主线程的 communicate() 随管道关闭而返回。
+        """
+        # Validate command before spawning (fail-fast for misconfigured hooks)
+        if not spec.command or not isinstance(spec.command, (list, tuple)):
+            self._audit(spec.event, spec.raw, "rejected_empty_command",
+                        "hook command 为空或非列表")
+            return None
+
         try:
-            proc = subprocess.run(
+            proc = subprocess.Popen(
                 spec.command,
-                input=json.dumps(payload, ensure_ascii=False),
-                capture_output=True,
-                text=True,
-                timeout=spec.timeout,
+                stdin=subprocess.PIPE,
+                stdout=subprocess.PIPE,
+                stderr=subprocess.PIPE,
                 cwd=self.workspace,
+                text=True,
             )
-        except subprocess.TimeoutExpired:
-            self._audit(spec.event, spec.raw, "timeout",
-                        f"hook 超过 {spec.timeout}s 被强杀")
+        except FileNotFoundError:
+            self._audit(spec.event, spec.raw, "spawn_error",
+                        f"命令未找到: {spec.command[0] if spec.command else '<empty>'}")
+            return None
+        except PermissionError as exc:
+            self._audit(spec.event, spec.raw, "spawn_error",
+                        f"权限不足: {exc}")
             return None
         except Exception as exc:  # noqa: BLE001
+            self._audit(spec.event, spec.raw, "spawn_error", f"{type(exc).__name__}: {exc}")
+            return None
+
+        killed: list[bool] = []
+        stop_watchdog = threading.Event()
+
+        def _watchdog() -> None:
+            if stop_watchdog.wait(spec.timeout):
+                return
+            killed.append(True)
+            self._kill_tree(proc)
+            self._audit(spec.event, spec.raw, "timeout",
+                        f"hook 超过 {spec.timeout}s 被强杀")
+
+        watcher = threading.Thread(target=_watchdog, daemon=True)
+        watcher.start()
+        try:
+            out, err = proc.communicate(input=json.dumps(payload, ensure_ascii=False))
+        except Exception as exc:  # noqa: BLE001
+            self._kill_tree(proc)
             self._audit(spec.event, spec.raw, "error", f"{type(exc).__name__}: {exc}")
+            return None
+        finally:
+            stop_watchdog.set()
+            watcher.join(timeout=2.0)
+
+        if killed:
             return None
         if proc.returncode != 0:
             self._audit(spec.event, spec.raw, "nonzero_rc",
-                        f"rc={proc.returncode} stderr={proc.stderr[:200]}")
-        return proc.stdout
+                        f"rc={proc.returncode} stderr={err[:200]}")
+        return out
+
+    @staticmethod
+    def _kill_tree(proc: "subprocess.Popen") -> None:
+        """强杀进程树 (含子孙), 跨平台。Windows 用 taskkill /T /F。
+
+        注意: 如果进程已退出, 各种强杀操作会抛异常, 统一 catch 并忽略。
+        """
+        # Check if process already exited (no-op in that case)
+        if proc.poll() is not None:
+            return
+        try:
+            pid = proc.pid
+            if os.name == "nt":
+                subprocess.run(
+                    ["taskkill", "/pid", str(pid), "/T", "/F"],
+                    capture_output=True, timeout=10,
+                )
+            else:
+                try:
+                    os.killpg(os.getpgid(pid), signal.SIGKILL)
+                except ProcessLookupError:
+                    pass  # Process group already gone
+        except Exception:  # noqa: BLE001
+            # Fallback: try to kill just the main process
+            try:
+                if proc.poll() is None:
+                    proc.kill()
+            except Exception:  # noqa: BLE001
+                pass
 
     def _exec_http(self, spec: _HookSpec, payload: Dict[str, Any]) -> Optional[str]:
         """执行 HTTP POST hook。"""
@@ -396,7 +472,7 @@ class HookManager:
         try:
             with urllib.request.urlopen(req, timeout=spec.timeout) as resp:  # noqa: S310
                 body = resp.read(50000).decode("utf-8", errors="replace")
-                return body
+                return str(body)
         except urllib.error.HTTPError as exc:
             self._audit(spec.event, spec.raw, "http_error",
                         f"HTTP {exc.code} {exc.reason}")
@@ -449,9 +525,10 @@ class HookManager:
 
     @staticmethod
     def _parse_decision(stdout: str) -> Optional[Dict[str, Any]]:
-        """解析 hook stdout 为决策 dict。兼容两种风格:
+        """解析 hook stdout 为决策 dict。兼容多种风格:
         - {"decision":"block","reason":...} / {"block":true,"reason":...}
         - {"args": {...}}
+        - 非 JSON 输出 → 忽略 (视为无决策)
         返回 None 表示无有效决策。
         """
         s = (stdout or "").strip()
@@ -459,16 +536,16 @@ class HookManager:
             return None
         try:
             data = json.loads(s)
-        except Exception:
+        except (json.JSONDecodeError, ValueError):
             return None
         if not isinstance(data, dict):
             return None
         if "decision" in data:
             return {"block": str(data.get("decision")).lower() == "block",
-                    "reason": data.get("reason", ""), "args": data.get("args")}
+                    "reason": str(data.get("reason", "")), "args": data.get("args")}
         if "block" in data:
             return {"block": bool(data.get("block")),
-                    "reason": data.get("reason", ""), "args": data.get("args")}
+                    "reason": str(data.get("reason", "")), "args": data.get("args")}
         if "args" in data:
             return {"block": False, "reason": "", "args": data.get("args")}
         return None
@@ -490,8 +567,18 @@ class HookManager:
                 "detail": detail,
                 "hook": desc,
             })
-        except Exception as exc:
+        except Exception as exc:  # noqa: BLE001
+            # Fail-safe: audit failure must never crash the hook pipeline
             log.debug("hook.executed 审计事件发送失败: %s", exc)
+
+    def __repr__(self) -> str:
+        specs_by_event: Dict[str, int] = {}
+        for s in self._specs:
+            specs_by_event[s.event] = specs_by_event.get(s.event, 0) + 1
+        return (
+            f"HookManager(enabled={self.enabled}, hooks={len(self._specs)}, "
+            f"by_event={specs_by_event}, timeout={self.default_timeout})"
+        )
 
     # ------------------------------------------------------------------ 枚举
 

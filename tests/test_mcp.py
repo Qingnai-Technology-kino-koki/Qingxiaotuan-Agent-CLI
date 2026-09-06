@@ -163,52 +163,53 @@ def _fake_kernel_with_client():
 
 
 def test_cmd_mcp_list(monkeypatch):
-    import qingxiaotuan.cli.commands as C
+    import qingxiaotuan.cli.cmd_mcp_cli as MC
     kernel, c = _fake_kernel_with_client()
-    monkeypatch.setattr(C, "build_kernel", lambda *a, **k: kernel)
+    monkeypatch.setattr(MC, "build_kernel", lambda *a, **k: kernel)
+    monkeypatch.setattr(MC, "Config", lambda *a, **k: kernel.require("config"))
     try:
         ns = argparse.Namespace(mcp_cmd="list", server=None, tool=None, json=None,
                                 name=None, command=None, args=[], env=[], timeout=None,
                                 workspace=".")
-        assert C.cmd_mcp(ns) == 0
+        assert MC.cmd_mcp(ns) == 0
     finally:
         c.stop()
 
 
 def test_cmd_mcp_tools(monkeypatch):
-    import qingxiaotuan.cli.commands as C
+    import qingxiaotuan.cli.cmd_mcp_cli as MC
     kernel, c = _fake_kernel_with_client()
-    monkeypatch.setattr(C, "build_kernel", lambda *a, **k: kernel)
+    monkeypatch.setattr(MC, "build_kernel", lambda *a, **k: kernel)
     try:
         ns = argparse.Namespace(mcp_cmd="tools", server="demo", tool=None, json=None,
                                 name=None, command=None, args=[], env=[], timeout=None,
                                 workspace=".")
-        assert C.cmd_mcp(ns) == 0
+        assert MC.cmd_mcp(ns) == 0
     finally:
         c.stop()
 
 
 def test_cmd_mcp_call(monkeypatch):
-    import qingxiaotuan.cli.commands as C
+    import qingxiaotuan.cli.cmd_mcp_cli as MC
     kernel, c = _fake_kernel_with_client()
-    monkeypatch.setattr(C, "build_kernel", lambda *a, **k: kernel)
+    monkeypatch.setattr(MC, "build_kernel", lambda *a, **k: kernel)
     try:
         ns = argparse.Namespace(mcp_cmd="call", server="demo", tool="echo_text",
                                 json='{"text":"cli"}', name=None, command=None,
                                 args=[], env=[], timeout=None, workspace=".")
-        assert C.cmd_mcp(ns) == 0
+        assert MC.cmd_mcp(ns) == 0
     finally:
         c.stop()
 
 
 def test_cmd_mcp_add_persists(monkeypatch):
-    import qingxiaotuan.cli.commands as C
+    import qingxiaotuan.cli.cmd_mcp_cli as MC
     fake_cfg = FakeConfig({"mcp": {"servers": []}})
-    monkeypatch.setattr(C, "Config", lambda *a, **k: fake_cfg)
+    monkeypatch.setattr(MC, "Config", lambda *a, **k: fake_cfg)
     ns = argparse.Namespace(mcp_cmd="add", server=None, tool=None, json=None,
                             name="fs", command="npx", args=["-y", "server-fs"],
                             env=["TOKEN=x"], timeout=20.0, workspace=".")
-    assert C.cmd_mcp(ns) == 0
+    assert MC.cmd_mcp(ns) == 0
     servers = fake_cfg.get("mcp.servers", [])
     assert len(servers) == 1
     assert servers[0]["name"] == "fs"

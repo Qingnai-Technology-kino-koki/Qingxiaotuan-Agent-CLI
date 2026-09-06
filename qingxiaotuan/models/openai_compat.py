@@ -44,13 +44,28 @@ class OpenAICompatAdapter(ModelAdapter):
     def client(self) -> OpenAI:
         if self._client is None:
             if not self._api_key:
-                raise RuntimeError(
-                    "未配置 API Key。请运行 `qxt setup`, 或设置环境变量 "
-                    "DEEPSEEK_API_KEY / OPENCODE_ZEN_API_KEY / QXT_API_KEY。"
-                )
-            # 延迟导入: openai SDK 很重 (pydantic 类型), 只在真正发请求时加载
+                # 本地/自托管端点 (Ollama / llama.cpp / LM Studio / vLLM 等 OpenAI 兼容服务)
+                # 通常不需要真实密钥, 缺失时回落一个占位 key, 避免本地测试被卡在鉴权。
+                # 远程端点仍严格要求真实密钥 (下方 import openai 后由服务端返回 401)。
+                if "localhost" in self.base_url or "127.0.0.1" in self.base_url:
+                    self._api_key = "sk-local-llm"
+                else:
+                    raise RuntimeError(
+                        "未配置 API Key。请运行 `qxt setup`, 或设置环境变量 "
+                        "DEEPSEEK_API_KEY / OPENCODE_ZEN_API_KEY / QXT_API_KEY。"
+                    )
+            # 延迟导入: openai SDK 很重 (pydantic 类型), 只在真正发请求时加载。
+            # 关键: 它绝不是核心依赖 —— 不使用 OpenAI 兼容传输层时 (本地/Ollama/Anthropic
+            # 等) 完全不需要安装 openai, 导入本模块也不会触碰它 (见文件顶部 TYPE_CHECKING)。
             import httpx
-            from openai import OpenAI
+            try:
+                from openai import OpenAI
+            except ImportError as exc:  # 友好报错: 仅 OpenAI 传输层需要该 SDK
+                raise RuntimeError(
+                    "未安装 openai SDK, 但当前 Provider 需要 OpenAI 兼容传输层。\n"
+                    "该依赖仅作 HTTP 传输层使用, 核心逻辑不依赖它; 运行非 OpenAI 场景无需安装。\n"
+                    "安装方式: pip install qingxiaotuan[openai]  或  pip install openai>=1.40"
+                ) from exc
             # 分离连接与读超时; 流式场景读超时作为分片间最大空闲
             timeout_cfg: Any
             if self.connect_timeout and self.read_timeout:

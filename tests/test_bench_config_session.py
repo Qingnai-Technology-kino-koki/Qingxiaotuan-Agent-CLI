@@ -8,6 +8,7 @@ from unittest import mock
 sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
 
 from qingxiaotuan.cli import commands
+from qingxiaotuan.cli import cmd_setup, cmd_chat
 from qingxiaotuan.config import Config
 
 
@@ -118,7 +119,7 @@ def test_session_list_respects_qxt_home(tmp_path, monkeypatch, capsys):
 def test_bench_cache_graceful_without_key():
     """无 API Key 时应优雅提示并返回 1, 不抛异常。"""
     args = mock.Mock(bench_cmd="cache", rounds=2, task="t")
-    with mock.patch.object(commands, "build_kernel") as bk:
+    with mock.patch.object(cmd_setup, "build_kernel") as bk:
         kernel = mock.Mock()
         config = mock.Mock()
         config.get = lambda k, d=None: {
@@ -153,8 +154,8 @@ def test_bench_cache_shows_per_round_deltas(tmp_path, monkeypatch, capsys):
                 self.total_usage[k] = self.total_usage.get(k, 0) + v
             self.i += 1
 
-    with mock.patch.object(commands, "build_kernel") as bk, \
-         mock.patch.object(commands, "create_agent", return_value=FakeAgent()):
+    with mock.patch.object(cmd_setup, "build_kernel") as bk, \
+         mock.patch.object(cmd_setup, "create_agent", return_value=FakeAgent()):
         kernel = mock.Mock()
         config = mock.Mock()
         config.get = lambda k, d=None: {
@@ -209,11 +210,11 @@ def test_model_test_connection_error():
 # ------------------------------------------------------------------ setup 向导
 
 def test_ask_choice_defaults():
-    with mock.patch("qingxiaotuan.cli.commands.input", side_effect=[""]):
+    with mock.patch("builtins.input", side_effect=[""]):
         assert commands._ask_choice("p", ["a", "b"], "a") == "a"
-    with mock.patch("qingxiaotuan.cli.commands.input", side_effect=["b"]):
+    with mock.patch("builtins.input", side_effect=["b"]):
         assert commands._ask_choice("p", ["a", "b"], "a") == "b"
-    with mock.patch("qingxiaotuan.cli.commands.input", side_effect=["zzz"]):
+    with mock.patch("builtins.input", side_effect=["zzz"]):
         assert commands._ask_choice("p", ["a", "b"], "a") == "a"
 
 
@@ -241,9 +242,9 @@ def test_setup_full_writes_all_settings(tmp_path, monkeypatch):
         node[keys[-1]] = value
 
     inputs = ["1", "", "yolo", "low", "0.5", "4096"]
-    with mock.patch.object(commands.Config, "set_user", fake_set_user), \
-         mock.patch("qingxiaotuan.cli.commands.input", side_effect=inputs), \
-         mock.patch.object(commands, "_pick_model_interactive", return_value=("deepseek", "deepseek-chat")):
+    with mock.patch.object(Config, "set_user", fake_set_user), \
+         mock.patch("builtins.input", side_effect=inputs), \
+         mock.patch.object(cmd_chat, "_pick_model_interactive", return_value=("deepseek", "deepseek-chat")):
         assert commands._setup_full(config) == 0
     assert written["model.provider"] == "deepseek"
     assert written["model.model"] == "deepseek-chat"
@@ -268,9 +269,9 @@ def test_setup_full_invalid_inputs_fall_back_to_defaults(tmp_path, monkeypatch):
 
     # 非法枚举/数值 → 回退默认 (mode=standard, effort=high, temp=0.7, mt=8192)
     inputs = ["1", "", "crazy", "insane", "abc", "abc"]
-    with mock.patch.object(commands.Config, "set_user", fake_set_user), \
-         mock.patch("qingxiaotuan.cli.commands.input", side_effect=inputs), \
-         mock.patch.object(commands, "_pick_model_interactive", return_value=("deepseek", "deepseek-chat")):
+    with mock.patch.object(Config, "set_user", fake_set_user), \
+         mock.patch("builtins.input", side_effect=inputs), \
+         mock.patch.object(cmd_chat, "_pick_model_interactive", return_value=("deepseek", "deepseek-chat")):
         assert commands._setup_full(config) == 0
     assert written["mode.default"] == "standard"
     assert written["agent.effort"] == "high"
@@ -316,7 +317,7 @@ def test_session_delete_all_with_confirm(tmp_path, monkeypatch, capsys):
     monkeypatch.setenv("QXT_HOME", str(tmp_path / "home"))
     sess_dir = _make_sessions(tmp_path, ["a", "b"], [1000, 2000])
     args = mock.Mock(session_cmd="delete", target="all", yes=False)
-    with mock.patch("qingxiaotuan.cli.commands.input", side_effect=["y"]):
+    with mock.patch("builtins.input", side_effect=["y"]):
         assert commands.cmd_session(args) == 0
     assert not list(sess_dir.glob("*.jsonl"))
 
@@ -325,7 +326,7 @@ def test_session_delete_cancel(tmp_path, monkeypatch, capsys):
     monkeypatch.setenv("QXT_HOME", str(tmp_path / "home"))
     sess_dir = _make_sessions(tmp_path, ["a"], [1000])
     args = mock.Mock(session_cmd="delete", target="all", yes=False)
-    with mock.patch("qingxiaotuan.cli.commands.input", side_effect=["n"]):
+    with mock.patch("builtins.input", side_effect=["n"]):
         assert commands.cmd_session(args) == 0
     assert (sess_dir / "a.jsonl").exists()
     assert "已取消" in capsys.readouterr().out
@@ -393,7 +394,7 @@ def test_model_test_override_key_env(monkeypatch):
 def test_bench_latency_graceful_without_key():
     """无 API Key 时应优雅提示并返回 1。"""
     args = mock.Mock(bench_cmd="latency", rounds=2, task="t")
-    with mock.patch.object(commands, "build_kernel") as bk:
+    with mock.patch.object(cmd_setup, "build_kernel") as bk:
         kernel = mock.Mock()
         config = mock.Mock()
         config.get = lambda k, d=None: {
@@ -408,7 +409,7 @@ def test_bench_latency_graceful_without_key():
 def test_bench_latency_success(tmp_path, monkeypatch, capsys):
     monkeypatch.setenv("QXT_HOME", str(tmp_path / "home"))
     args = mock.Mock(bench_cmd="latency", rounds=2, task="t")
-    with mock.patch.object(commands, "build_kernel") as bk, \
+    with mock.patch.object(cmd_setup, "build_kernel") as bk, \
          mock.patch("qingxiaotuan.models.create_adapter") as ca:
         kernel = mock.Mock()
         config = mock.Mock()
@@ -436,15 +437,15 @@ def test_doctor_reports_config_errors(tmp_path, monkeypatch, capsys):
     """doctor 复用 _validate_config, 有 err 返回 1。"""
     monkeypatch.setenv("QXT_HOME", str(tmp_path / "home"))
     args = mock.Mock(workspace=str(tmp_path))
-    with mock.patch.object(commands, "build_kernel") as bk, \
-         mock.patch.object(commands, "_validate_config", return_value=[
+    with mock.patch.object(cmd_chat, "build_kernel") as bk, \
+         mock.patch.object(cmd_chat, "_validate_config", return_value=[
              ("ok", "model.provider", "deepseek"),
              ("err", "model.model", "未设置模型名"),
          ]), \
          mock.patch("qingxiaotuan.ext.registry.engine_healthcheck",
                     return_value={"diff": {"ok": True}}), \
          mock.patch("httpx.Client") as hc, \
-         mock.patch.object(commands.subprocess, "run") as sp:
+         mock.patch.object(cmd_chat.subprocess, "run") as sp:
         kernel = mock.Mock()
         config = mock.Mock()
         config.get = lambda k, d=None: None
@@ -465,8 +466,8 @@ def test_doctor_all_ok(tmp_path, monkeypatch, capsys):
     """全部正常时返回 0 并显示「全部正常」。"""
     monkeypatch.setenv("QXT_HOME", str(tmp_path / "home"))
     args = mock.Mock(workspace=str(tmp_path))
-    with mock.patch.object(commands, "build_kernel") as bk, \
-         mock.patch.object(commands, "_validate_config", return_value=[
+    with mock.patch.object(cmd_chat, "build_kernel") as bk, \
+         mock.patch.object(cmd_chat, "_validate_config", return_value=[
              ("ok", "model.provider", "deepseek"),
              ("ok", "model.model", "deepseek-chat"),
          ]), \
@@ -474,7 +475,8 @@ def test_doctor_all_ok(tmp_path, monkeypatch, capsys):
                     return_value={"diff": {"ok": True}}), \
          mock.patch("httpx.Client") as hc, \
          mock.patch("qingxiaotuan.models.create_adapter") as ca, \
-         mock.patch.object(commands.subprocess, "run") as sp:
+         mock.patch("urllib.request.urlopen") as urlopen, \
+         mock.patch.object(cmd_chat.subprocess, "run") as sp:
         kernel = mock.Mock()
         config = mock.Mock()
         config.get = lambda k, d=None: {
@@ -486,6 +488,7 @@ def test_doctor_all_ok(tmp_path, monkeypatch, capsys):
         fake_client = mock.MagicMock()
         fake_client.__enter__.return_value = fake_client
         hc.return_value = fake_client
+        urlopen.return_value.__enter__.return_value = mock.Mock()
         adapter = mock.Mock()
         adapter.chat.return_value = mock.Mock()
         ca.return_value = adapter

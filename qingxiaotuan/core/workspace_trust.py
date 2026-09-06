@@ -33,6 +33,45 @@ class TrustLevel:
     UNKNOWN = "unknown"       # 未评估 (首次打开)
 
 
+# ---------------------------------------------------------------- fail-closed 裁决
+
+
+def is_action_allowed(level: str, action: str) -> bool:
+    """fail-closed 动作裁决: 未知/非预期级别一律拒绝。
+
+    - trusted:   允许一切 (仍受 safety 引擎约束)
+    - limited:   仅允许只读类动作 (read/plan)
+    - 其它:     拒绝
+    """
+    if level == TrustLevel.TRUSTED:
+        return True
+    if level == TrustLevel.LIMITED:
+        return action in ("read", "plan")
+    # untrusted / unknown / 任意未知值 → 保守拒绝
+    return False
+
+
+def consult_for_shell(level: str, command: str) -> "tuple[str, str]":
+    """为 shell 执行提供 fail-closed 裁决, 返回 (action, reason)。
+
+    action ∈ {allow, confirm, deny}。本函数不替代 safety 引擎的红线判定,
+    而是从「工作区信任」维度做额外门禁 —— untrusted 工作区直接禁止 shell,
+    unknown 必须确认, limited 对非良性命令要求确认。
+    """
+    if level == TrustLevel.UNTRUSTED:
+        return ("deny", "工作区为 untrusted, 禁止执行 shell 命令")
+    if level == TrustLevel.UNKNOWN:
+        return ("confirm", "工作区信任级别未知, 需用户确认后方可执行 shell")
+    if level == TrustLevel.LIMITED:
+        try:
+            from ..ext.safety_engine import is_benign_dev_command
+            if not is_benign_dev_command(command):
+                return ("confirm", "工作区为 limited 信任, 非良性命令需确认")
+        except Exception:  # noqa: BLE001
+            return ("confirm", "工作区为 limited 信任, 无法评估命令安全性, 需确认")
+    return ("allow", "")
+
+
 # ================================================================ 信任记录
 
 @dataclass

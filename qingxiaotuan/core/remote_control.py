@@ -16,6 +16,7 @@ from __future__ import annotations
 
 import hashlib
 import json
+import logging
 import os
 import secrets
 import time
@@ -23,6 +24,8 @@ import urllib.parse
 from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Any, Callable, Dict, List, Optional
+
+log = logging.getLogger(__name__)
 
 
 # ================================================================ 数据结构
@@ -40,6 +43,11 @@ class RemoteSession:
     push_enabled: bool = False
     push_on_decision: bool = True
     push_on_permission: bool = True
+    # —— 安全加固字段 (一次性 token / 设备绑定 / 爆破防护 / 确认标记) ——
+    confirmed: bool = False               # 配对 token 是否已一次性消费
+    token_fingerprint: str = ""           # 设备绑定指纹 (确认时写入, 防 token 被异设备复用)
+    confirm_attempts: int = 0             # 确认尝试计数 (防爆破)
+    requires_confirmation: bool = False   # 最近一条远程 prompt 是否需用户确认
 
     def to_dict(self) -> Dict[str, Any]:
         return {
@@ -50,6 +58,8 @@ class RemoteSession:
             "device_name": self.device_name,
             "device_type": self.device_type,
             "push_enabled": self.push_enabled,
+            "confirmed": self.confirmed,
+            "requires_confirmation": self.requires_confirmation,
         }
 
     @property
@@ -61,6 +71,31 @@ class RemoteSession:
     def is_active(self) -> bool:
         """会话是否活跃。"""
         return self.connected and not self.is_expired
+
+
+# ================================================================ 安全辅助
+
+
+def _device_fingerprint(token: str, device_name: str, device_type: str) -> str:
+    """设备绑定指纹: 确认成功后写入会话, 后续操作须来自同一设备标识。"""
+    return hashlib.sha256(
+        f"{token}|{device_name}|{device_type}".encode("utf-8")
+    ).hexdigest()[:32]
+
+
+def _classify_remote(prompt: str):
+    """对远程 prompt 做安全分类 (fail-closed)。
+
+    命中硬红线 -> deny; 其余异常一律保守要求确认, 不直接放行。
+    """
+    from ..ext.security_gate import GateVerdict, SecurityGate
+    try:
+        return SecurityGate(remote=True).classify_remote_prompt(prompt)
+    except Exception:  # noqa: BLE001
+        from ..ext.safety_engine import is_hard_redline
+        if is_hard_redline(prompt):
+            return GateVerdict("deny", "critical", ("远程 prompt 分类异常, 命中红线",))
+        return GateVerdict("confirm", "high", ("远程 prompt 分类异常, 保守要求确认",))
 
 
 # ================================================================ Remote Control Manager
@@ -87,13 +122,16 @@ class RemoteControl:
         self._port = port or self._find_free_port()
         self._server = None
         self._callbacks: Dict[str, Callable] = {}
+        # 配对确认爆破防护
+        self._confirm_failures: int = 0
+        self._confirm_locked_until: float = 0.0
 
     def _find_free_port(self) -> int:
         """找一个空闲端口。"""
         import socket
         with socket.socket(socket.AF_INET, socket.SOCK_STREAM) as s:
             s.bind(("", 0))
-            return s.getsockname()[1]
+            return int(s.getsockname()[1])
 
     def start_pairing(self, session_id: str) -> Dict[str, Any]:
         """开始配对流程。
@@ -131,31 +169,65 @@ class RemoteControl:
         }
 
     def confirm_pairing(self, token: str, device_name: str = "", device_type: str = "mobile") -> bool:
-        """确认配对 (设备扫码后调用)。"""
+        """确认配对 (设备扫码后调用)。
+
+        安全加固:
+        - 一次性 token: 已消费过的会话拒绝再次确认 (防重放);
+        - 设备绑定: 确认时写入指纹, 异设备即使拿到 token 也无法复用;
+        - 爆破防护: 连续失败过多临时封禁确认入口。
+        """
+        now = time.time()
+        # 全局锁定: 连续失败过多则临时封禁
+        if self._confirm_locked_until > now:
+            return False
         for session_id, rs in self._sessions.items():
             if rs.pairing_token == token and not rs.is_expired:
+                # 一次性 token: 已消费过则拒绝
+                if rs.confirmed:
+                    return False
                 rs.connected = True
-                rs.connected_at = time.time()
+                rs.connected_at = now
                 rs.device_name = device_name
                 rs.device_type = device_type
+                rs.confirmed = True
+                rs.token_fingerprint = _device_fingerprint(token, device_name, device_type)
+                # 立即作废 token, 使其在 5 分钟窗口内也无法被再次使用
+                rs.pairing_token = ""
+                self._confirm_failures = 0
                 self._save_sessions()
                 return True
+        # token 不匹配: 累计失败, 触发锁定
+        self._confirm_failures += 1
+        if self._confirm_failures >= 5:
+            self._confirm_locked_until = now + 60.0
         return False
 
     def disconnect(self, session_id: str) -> bool:
-        """断开远程连接。"""
+        """断开远程连接, 并作废配对 token (断开后不可在窗口内重连)。"""
         rs = self._sessions.get(session_id)
         if rs:
             rs.connected = False
+            rs.pairing_token = ""
             self._save_sessions()
             return True
         return False
 
     def send_prompt(self, session_id: str, prompt: str) -> bool:
-        """发送远程 prompt。"""
+        """发送远程 prompt。
+
+        安全加固: 远程发来的 prompt 须经安全闸门分类。
+        - 命中硬红线 -> 直接拒绝投递 (远程设备绝不能驱动致命命令);
+        - 非良性 -> 仍投递, 但标记 requires_confirmation=True, 由 Agent 侧强制确认;
+        - 良性开发命令 -> 正常投递。
+        """
         rs = self._sessions.get(session_id)
         if not rs or not rs.is_active:
             return False
+        verdict = _classify_remote(prompt)
+        if verdict.blocks():
+            log.warning("远程 prompt 被安全闸门拒绝 (命中红线): %r", prompt[:80])
+            return False
+        rs.requires_confirmation = verdict.needs_confirm()
         # 触发回调
         callback = self._callbacks.get("on_prompt")
         if callback:
@@ -231,7 +303,7 @@ class RemoteControl:
 
     def generate_qr_data(self, pairing_info: Dict[str, Any]) -> str:
         """生成 QR 码数据 (纯文本格式, 可被外部 QR 库编码)。"""
-        return pairing_info["url"]
+        return str(pairing_info["url"])
 
     def get_status(self, session_id: str) -> Dict[str, Any]:
         """获取远程控制状态 (供 /remote-control 展示)。"""

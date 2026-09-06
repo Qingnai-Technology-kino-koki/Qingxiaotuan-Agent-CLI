@@ -16,10 +16,11 @@
 
 from __future__ import annotations
 
+import copy
 import json
 import os
 from pathlib import Path
-from typing import Any, Dict, List, Optional, Set
+from typing import Any, Dict, List, Optional, Set, cast
 
 
 # ================================================================ 设置源
@@ -59,8 +60,8 @@ class ManagedSettings:
 
         # 1. 默认值 (最低优先级)
         try:
-            from .defaults import DEFAULTS
-            self._sources.append(SettingsSource("defaults", 0, DEFAULTS))
+            from .defaults import DEFAULT_CONFIG
+            self._sources.append(SettingsSource("defaults", 0, DEFAULT_CONFIG))
         except ImportError:
             self._sources.append(SettingsSource("defaults", 0, {}))
 
@@ -111,16 +112,27 @@ class ManagedSettings:
         if not path.exists():
             return {}
         try:
-            return json.loads(path.read_text(encoding="utf-8"))
+            return cast(Dict[str, Any], json.loads(path.read_text(encoding="utf-8")))
         except Exception:
             return {}
 
     def _load_env(self) -> Dict[str, Any]:
         """从 QXT_* 环境变量加载设置。"""
+        import logging
         data: Dict[str, Any] = {}
         prefix = "QXT_"
         for key, value in os.environ.items():
             if not key.startswith(prefix) or key == "QXT_HOME":
+                continue
+            # 守护: os.environ 在 Windows / 嵌入式容器 (systemd, WSL 转发)
+            # 偶尔出现非 str 值 (e.g. bytes / list). 直接调 .lower() / .isdigit()
+            # 会抛 AttributeError, 让整个配置加载失败。
+            if not isinstance(value, str):
+                logging.getLogger(__name__).warning(
+                    "QXT_* 环境变量 %s 收到非 str 值 (%s), 已保留原值",
+                    key, type(value).__name__,
+                )
+                data.setdefault("_env_warnings", []).append(key)
                 continue
             # QXT_MODEL_PROVIDER=model.provider -> {"model": {"provider": value}}
             setting_key = key[len(prefix):].lower()
@@ -129,9 +141,10 @@ class ManagedSettings:
             for part in parts[:-1]:
                 current = current.setdefault(part, {})
             # 尝试类型转换
-            if value.lower() in ("true", "yes", "on"):
+            lowered = value.lower()
+            if lowered in ("true", "yes", "on"):
                 current[parts[-1]] = True
-            elif value.lower() in ("false", "no", "off"):
+            elif lowered in ("false", "no", "off"):
                 current[parts[-1]] = False
             elif value.isdigit():
                 current[parts[-1]] = int(value)
@@ -167,7 +180,11 @@ class ManagedSettings:
         return result
 
     def _deep_merge(self, base: Dict[str, Any], override: Dict[str, Any]) -> Dict[str, Any]:
-        """深合并: override 覆盖 base 的同名键。"""
+        """深合并: override 覆盖 base 的同名键。
+
+        注意: 插入新键时必须深拷贝 value, 否则 base 会与原 source (如全局
+        DEFAULT_CONFIG) 共享嵌套 dict 引用, 后续合并会就地污染全局默认值。
+        """
         for key, value in override.items():
             # 锁定字段: 只有组织级可以设置, 其他级别不能覆盖
             if key in self._locked_fields:
@@ -175,14 +192,14 @@ class ManagedSettings:
             if key in base and isinstance(base[key], dict) and isinstance(value, dict):
                 self._deep_merge(base[key], value)
             else:
-                base[key] = value
+                base[key] = copy.deepcopy(value)
         return base
 
     def get(self, dotted: str, default: Any = None) -> Any:
         """按点号路径获取合并后的设置值。"""
         merged = self.merge()
         parts = dotted.split(".")
-        current = merged
+        current: Any = merged
         for part in parts:
             if isinstance(current, dict):
                 current = current.get(part)

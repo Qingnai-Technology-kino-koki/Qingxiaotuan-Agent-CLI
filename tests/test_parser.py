@@ -6,7 +6,7 @@
 - 带嵌套子命令的父命令在缺省子命令时报错 (required=True);
 - 各子命令的必需参数 / 可选 flag 解析正确;
 - _resolve_func 把函数名映射到正确的模块 (ext/improve 走独立模块);
-- main() 的分发逻辑 (无子命令 -> chat, --yolo -> mode=yolo, 非 TTY 拦截)。
+- main() 的分发逻辑 (无子命令 -> 交互对话(chat), --yolo -> mode=yolo, 非 TTY 拦截)。
 """
 
 import argparse
@@ -44,7 +44,6 @@ def test_all_subcommands_have_func_default():
 
 def test_subcommand_func_values():
     cases = {
-        "chat": ("cmd_chat", []),
         "dev": ("cmd_dev", ["task"]),
         "run": ("cmd_run", ["task"]),
         "agent": ("cmd_agent", ["task"]),
@@ -53,7 +52,7 @@ def test_subcommand_func_values():
         "setup": ("cmd_setup", []),
         "doctor": ("cmd_doctor", []),
         "mode": ("cmd_mode", []),
-        "model": ("cmd_model", []),
+        "models": ("cmd_model", []),
         "config": ("cmd_config", ["dump"]),
         "plugin": ("cmd_plugin", ["list"]),
         "skill": ("cmd_skill", ["list"]),
@@ -79,7 +78,7 @@ def test_ext_and_improve_leaves_set_func():
 
 
 def test_nested_subcommands_required():
-    """带嵌套子命令的父命令必须提供子命令 (model 例外: 无子命令进交互选择)。"""
+    """带嵌套子命令的父命令必须提供子命令 (models 例外: 无子命令进交互选择)。"""
     for parent in ["bg", "bench", "config", "plugin", "skill", "memory",
                    "cron", "mcp", "hooks", "ext", "improve", "session"]:
         with pytest.raises(SystemExit):
@@ -87,7 +86,7 @@ def test_nested_subcommands_required():
 
 
 def test_model_without_subcommand_is_valid():
-    args = _parse("model")
+    args = _parse("models")
     assert args.func == "cmd_model"
     assert getattr(args, "model_cmd", None) is None
 
@@ -121,7 +120,7 @@ def test_open_parses_target():
 
 
 def test_model_set_parses_positional():
-    args = _parse("model", "set", "deepseek", "deepseek-chat")
+    args = _parse("models", "set", "deepseek", "deepseek-chat")
     assert args.provider == "deepseek"
     assert args.model == "deepseek-chat"
     assert args.base_url is None
@@ -162,13 +161,14 @@ def test_resolve_func_routes_to_correct_module():
         assert imp.call_args[0][0] == ".commands"
 
 
-def test_main_no_args_routes_to_chat():
-    from qingxiaotuan.cli import commands
+def test_main_no_args_routes_to_interactive():
+    """`qxt` (无子命令) 应进入交互启动 (fast_chat -> cmd_chat)。"""
+    from qingxiaotuan.cli import fast_start
     captured = {}
     def spy(args):
         captured["called"] = True
         return 0
-    with mock.patch.object(commands, "cmd_chat", spy), \
+    with mock.patch.object(fast_start, "fast_chat", spy), \
          mock.patch("sys.stdin.isatty", return_value=True), \
          mock.patch.object(sys, "argv", ["qxt"]):
         assert parser.main() == 0
@@ -176,12 +176,12 @@ def test_main_no_args_routes_to_chat():
 
 
 def test_main_yolo_sets_mode():
-    from qingxiaotuan.cli import commands
+    from qingxiaotuan.cli import fast_start
     captured = {}
     def spy(args):
         captured["mode"] = getattr(args, "mode", None)
         return 0
-    with mock.patch.object(commands, "cmd_chat", spy), \
+    with mock.patch.object(fast_start, "fast_chat", spy), \
          mock.patch("sys.stdin.isatty", return_value=True), \
          mock.patch.object(sys, "argv", ["qxt", "--yolo"]):
         parser.main()

@@ -75,7 +75,8 @@ def test_status_bar_reflects_tokens():
     u._mascot.set(IDLE)
     u.add_tokens(500)
     u.set_context_pct(33.0, used=33000, budget=100000)
-    # status_bar 不应抛错, 且 context 占用与吉祥物图标出现在输出中
+    # status_bar 不应抛错, 且 context 占用 + 状态栏元素出现在输出中
+    # (单行: 左 model/cwd/branch, 右 context 占用; 无占用时右侧回退 /help)
     import io
     from contextlib import redirect_stdout
     buf = io.StringIO()
@@ -83,7 +84,17 @@ def test_status_bar_reflects_tokens():
         u.status_bar("standard", "high", "/workspace")
     rendered = buf.getvalue()
     assert "context: 33% (33k/100k)" in rendered
-    assert "◦" in rendered  # 吉祥物状态图标保留在状态栏
+    assert "context:" in rendered   # 有上下文占用时右侧显示占用
+    # git 分支 (仓库默认分支可能是 master/main, 动态获取避免硬编码)
+    import subprocess
+    try:
+        branch = subprocess.check_output(
+            ["git", "rev-parse", "--abbrev-ref", "HEAD"],
+            stderr=subprocess.DEVNULL, text=True,
+        ).strip()
+    except Exception:
+        branch = "master"
+    assert branch in rendered   # git 分支
 
 
 # ----------------------------------------------------- 快捷键面板
@@ -121,7 +132,7 @@ def test_keymap_panel_safe_in_headless():
 
 # ----------------------------------------------------- Kimi 风格 banner
 
-def test_banner_renders_kimi_style_box():
+def test_banner_renders_box_art():
     u = _ui()
     import io
     from contextlib import redirect_stdout
@@ -131,15 +142,17 @@ def test_banner_renders_kimi_style_box():
         u.banner(cfg, "C:/Users/28726", "deepseek-chat", "default",
                  mode="standard", effort="high")
     out = buf.getvalue()
-    # 关键元素: 双线盒边框 + 欢迎语 + 字段行
+    # 关键元素: 蓝色圆角框 + 原始 box-art 吉祥物 + 欢迎语 + 4 个字段行
     assert "Welcome to 青小团 CLI!" in out
     assert "Directory:" in out
     assert "Session:" in out
     assert "Model:" in out
     assert "Version:" in out
-    assert "▐█▛█▛█▌" in out  # 品牌装饰块
-    # 不再画 ASCII 团子吉祥物 (旧版用 Mascot.ascii 的 ( ◡ ) 等)
-    assert "( ◡ )" not in out
-    # 底部状态栏仍带吉祥物状态图标 (动态吉祥物保留在状态栏)
-    assert "◦" in out or "●" in out or "◍" in out
+    # 原始吉祥物 (box-art, 不改): 顶行 ▛ 缺口眼 + 底行实心底
+    assert "▐█▛█▛█▌" in out
+    assert "▐█████▌" in out
+    # 蓝色圆角框边框字符
+    assert "╭" in out and "╮" in out and "╰" in out and "╯" in out
+    # 状态栏提示区
+    assert "/help" in out
 

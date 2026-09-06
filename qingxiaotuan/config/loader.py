@@ -101,32 +101,97 @@ def _chmod_600(path: Path) -> None:
 
 
 # ---- 极简 YAML 子集解析器 (PyYAML 不可用时的降级) ----
+def _parse_yaml_value(val: str) -> Any:
+    """解析单个 YAML 值: 数字/布尔/null/列表/字符串。"""
+    val = val.strip()
+    if not val:
+        return ""
+    if val.startswith("[") and val.endswith("]"):
+        inner = val[1:-1].strip()
+        if not inner:
+            return []
+        return [_parse_yaml_value(x) for x in inner.split(",") if x.strip()]
+    if val.lower() in ("true", "false"):
+        return val.lower() == "true"
+    if val.lower() in ("null", "none", "~"):
+        return None
+    try:
+        return int(val)
+    except ValueError:
+        pass
+    try:
+        return float(val)
+    except ValueError:
+        pass
+    return val.strip('"').strip("'")
+
+
 def _mini_yaml_load(text: str) -> Dict[str, Any]:
-    """极简 YAML 解析: 仅支持 键: 值 的简单扁平结构 (嵌套忽略, 用于降级)。"""
-    result: Dict[str, Any] = {}
-    for line in text.splitlines():
-        line = line.strip()
-        if not line or line.startswith("#") or ":" not in line:
+    """极简 YAML 解析: 支持缩进嵌套 + 键值列表 (PyYAML 不可用时的降级)。"""
+    lines = text.splitlines()
+    root: Dict[str, Any] = {}
+    # 用栈维护嵌套: [(indent_level, dict_or_list_ref, key_or_None)]
+    # key_or_None: 如果当前节点是 dict 中某个 key 的值, 记录 key 名
+    stack: list[tuple[int, Any, Optional[str]]] = [(-1, root, None)]
+
+    for line in lines:
+        stripped = line.lstrip()
+        if not stripped or stripped.startswith("#"):
             continue
-        key, _, val = line.partition(":")
+        indent = len(line) - len(stripped)
+        if " #" in stripped:
+            stripped = stripped[:stripped.index(" #")].rstrip()
+
+        # ---- YAML 列表项: "- value" 或 "- " ----
+        if stripped.startswith("- ") or stripped == "-":
+            item_val = stripped[2:].strip() if stripped.startswith("- ") else ""
+            # 检查当前栈顶是否已经是 list (同级列表项直接追加)
+            if stack and isinstance(stack[-1][1], list):
+                stack[-1][1].append(_parse_yaml_value(item_val) if item_val else {})
+                continue
+            # 新列表的开始: 父节点应该是空 dict, 转换为 list
+            current_key = stack[-1][2] if stack else None
+            # 弹出到合适的父层级
+            while len(stack) > 1 and stack[-1][0] >= indent:
+                stack.pop()
+            parent_node = stack[-1][1]
+            if isinstance(parent_node, dict) and not parent_node and current_key:
+                # 转换空 dict 为 list
+                new_list: list = [_parse_yaml_value(item_val)] if item_val else []
+                if len(stack) > 1:
+                    grandparent = stack[-2][1]
+                    if isinstance(grandparent, dict):
+                        grandparent[current_key] = new_list
+                stack[-1] = (indent, new_list, current_key)
+            continue
+
+        # ---- 普通键值对 ----
+        if ":" not in stripped:
+            continue
+        key, _, val = stripped.partition(":")
         key = key.strip()
         val = val.strip()
-        if val.startswith("[") and val.endswith("]"):
-            inner = val[1:-1].strip()
-            result[key] = [x.strip().strip('"').strip("'") for x in inner.split(",") if x.strip()]
-        elif val.lower() in ("true", "false"):
-            result[key] = val.lower() == "true"
-        elif val.lower() in ("null", "none", "~"):
-            result[key] = None
+
+        # 弹出不再属于当前层级的栈帧
+        while len(stack) > 1 and stack[-1][0] >= indent:
+            stack.pop()
+
+        parent_node = stack[-1][1]
+
+        if not val:
+            # 子节点: 新建 dict 压栈
+            child_d: Dict[str, Any] = {}
+            if isinstance(parent_node, dict):
+                parent_node[key] = child_d
+            stack.append((indent, child_d, key))
+        elif val.startswith("["):
+            if isinstance(parent_node, dict):
+                parent_node[key] = _parse_yaml_value(val)
         else:
-            try:
-                result[key] = int(val)
-            except ValueError:
-                try:
-                    result[key] = float(val)
-                except ValueError:
-                    result[key] = val.strip('"').strip("'")
-    return result
+            if isinstance(parent_node, dict):
+                parent_node[key] = _parse_yaml_value(val)
+
+    return root
 
 
 def _load_yaml(path: Path) -> Dict[str, Any]:
@@ -208,7 +273,7 @@ class Config:
 
     def set_user(self, dotted: str, value: Any) -> None:
         """写入用户层配置文件 (自动把字符串值按目标类型转换)。"""
-        value = self._coerce(value)
+        value = self._autofill_preset_fields(self._coerce(value))
         cfg = _load_yaml(self.user_config_path)
         keys = dotted.split(".")
         node = cfg
@@ -219,6 +284,46 @@ class Config:
         dump_yaml(cfg, self.user_config_path)
         # 同步内存视图: 用 patch_replace 整值替换目标键 (保留同级默认字段)。
         self.data = patch_replace(self.data, {dotted: value})
+
+    def delete_user(self, dotted: str) -> bool:
+        """从用户层配置删除某个点路径键 (复位到内置默认值)。返回是否真的删掉了。
+
+        仅作用于用户层 (~/.qingxiaotuan/config.yaml), 不影响 Profile/patch 层。
+        """
+        cfg = _load_yaml(self.user_config_path)
+        keys = dotted.split(".")
+        node = cfg
+        for k in keys[:-1]:
+            if not isinstance(node, dict) or k not in node:
+                return False
+            node = node[k]
+        leaf = keys[-1]
+        if not isinstance(node, dict) or leaf not in node:
+            return False
+        del node[leaf]
+        self.home.mkdir(parents=True, exist_ok=True)
+        dump_yaml(cfg, self.user_config_path)
+        # 刷新内存视图: 重建 默认 -> 用户(已删) -> Profile。
+        self.data = copy.deepcopy(DEFAULT_CONFIG)
+        if self.profile in PRESET_PROFILES:
+            self.data = deep_merge(self.data, PRESET_PROFILES[self.profile])
+        self.data = deep_merge(self.data, cfg)
+        self.data = deep_merge(self.data, _load_yaml(self.profile_dir / "config.yaml"))
+        return True
+
+    @staticmethod
+    def _autofill_preset_fields(value: Any) -> Any:
+        """dict 且带已知 provider 时, 从对应预设补全缺失字段。
+
+        典型场景: `qxt config set model.worker '{"provider":"opencode-zen"}'` ——
+        只写 provider 就能自动带好 base_url / api_key_env / model 等连接信息,
+        与 provider_catalog / swarm worker 的补全语义保持一致。
+        """
+        if isinstance(value, dict) and isinstance(value.get("provider"), str):
+            preset = PRESET_PROFILES.get(value["provider"])
+            if preset and isinstance(preset.get("model"), dict):
+                return deep_merge(preset["model"], value)
+        return value
 
     @staticmethod
     def _coerce(value: Any) -> Any:

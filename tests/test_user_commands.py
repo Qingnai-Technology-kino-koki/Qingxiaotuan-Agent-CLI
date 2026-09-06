@@ -66,6 +66,32 @@ def test_parse_name_fallback_and_body(qxt_home):
     assert "$ARGUMENTS" in uc.body
 
 
+def test_claude_commands_discovered_and_take_precedence(qxt_home, tmp_path):
+    """Claude Code 标准位置 .claude/commands/*.md 被收录, 且优先级高于 .qxt/commands。"""
+    ws = tmp_path / "ws"
+    (ws / ".qxt" / "commands").mkdir(parents=True)
+    (ws / ".claude" / "commands").mkdir(parents=True)
+    (ws / ".qxt" / "commands" / "ship.md").write_text(
+        "---\ndescription: qxt 版\n---\n.qxt: $ARGUMENTS", encoding="utf-8")
+    (ws / ".claude" / "commands" / "ship.md").write_text(
+        "---\ndescription: claude 版\n---\n.claude: $ARGUMENTS", encoding="utf-8")
+    table = uc_mod.load_user_commands("no-such-config", str(ws))
+    assert "ship" in table
+    # 同名命令: .claude/commands 最后加载 → 就近优先, 覆盖 .qxt 版
+    assert table["ship"].description == "claude 版"
+    assert table["ship"].body.startswith(".claude:")
+
+
+def test_claude_commands_listing_order(qxt_home, tmp_path):
+    """command_dirs 输出: 用户级 → .qxt → .claude (优先级递增)。"""
+    dirs = uc_mod.command_dirs("no-such-config", str(tmp_path / "ws"))
+    assert len(dirs) == 3
+    assert dirs[-1].name == "commands" and ".claude" in str(dirs[-1])
+    assert ".qxt" in str(dirs[-2])
+    # 无 workspace 时只有用户级
+    assert len(uc_mod.command_dirs("no-such-config", "")) == 1
+
+
 def test_expand_arguments_and_shell(tmp_path, qxt_home):
     uc = uc_mod.parse_command.__wrapped__ if False else None  # noqa: F841 (占位防误删注释)
     _write_cmd(qxt_home, "deploy.md", DEPLOY)

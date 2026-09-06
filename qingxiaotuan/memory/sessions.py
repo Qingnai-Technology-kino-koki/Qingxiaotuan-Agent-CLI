@@ -11,6 +11,7 @@
 from __future__ import annotations
 
 import json
+import threading
 import time
 import uuid
 from pathlib import Path
@@ -23,11 +24,50 @@ class SessionStore:
         self.dir.mkdir(parents=True, exist_ok=True)
         self.session_id = time.strftime("%Y%m%d-%H%M%S") + "-" + uuid.uuid4().hex[:6]
         self.file = self.dir / f"{self.session_id}.jsonl"
+        # 多线程并发 append 同一 JSONL, open("a")+write 不原子, 实测 200 次并发
+        # 只落盘 139 行 (30%+ 丢失) 且部分行被截断。审计/事件溯源直接破坏。
+        self._lock = threading.Lock()
 
     def append(self, event_type: str, payload: Dict[str, Any]) -> None:
         record = {"ts": time.time(), "type": event_type, **payload}
-        with open(self.file, "a", encoding="utf-8") as f:
-            f.write(json.dumps(record, ensure_ascii=False) + "\n")
+        line = json.dumps(record, ensure_ascii=False) + "\n"
+        with self._lock:
+            with open(self.file, "a", encoding="utf-8") as f:
+                f.write(line)
+                f.flush()
+
+    def rotate(self, session_id: Optional[str] = None,
+               meta: Optional[Dict[str, Any]] = None) -> str:
+        """开启一个新会话文件 (同一 home 下), 返回新 session_id。
+
+        用途: 让每次 `Agent.run()` 拥有独立的 JSONL, 从而 `qxt replay` 能逐会话回放,
+        而进程级共享的 SessionStore 仍作为默认/兜底。
+
+        若传入 meta, 会在文件首行写入 session.meta (供 peek_title/区分后台会话)。
+        """
+        sid = session_id or (time.strftime("%Y%m%d-%H%M%S") + "-" + uuid.uuid4().hex[:6])
+        self.session_id = sid
+        self.file = self.dir / f"{sid}.jsonl"
+        if meta is not None:
+            self.append("session.meta", {"task": meta.get("task", ""),
+                                         "started_at": time.time(),
+                                         **{k: v for k, v in meta.items() if k != "task"}})
+        return sid
+
+    def read_all(self, limit: Optional[int] = None) -> List[Dict[str, Any]]:
+        """读取全部事件记录 (规整前)。空文件/损坏行返回 []。"""
+        if not self.file.exists():
+            return []
+        out: List[Dict[str, Any]] = []
+        with open(self.file, "r", encoding="utf-8") as f:
+            for line in f:
+                try:
+                    out.append(json.loads(line))
+                except json.JSONDecodeError:
+                    continue
+                if limit is not None and len(out) >= limit:
+                    break
+        return out
 
     @staticmethod
     def load_messages(path: Path) -> List[Dict[str, Any]]:
@@ -123,6 +163,63 @@ class SessionStore:
         except OSError:
             return None
         return None
+
+    # ------------------------------------------------------------------ 分叉
+
+    def fork(self, at_message: Optional[int] = None, note: str = "") -> "SessionStore":
+        """分叉当前会话: 复制截至第 ``at_message`` 条 user/assistant 消息的历史。
+
+        生成一个 child session (新文件), 其 ``session.meta`` 记录分叉谱系
+        ``(kind=fork, parent, branch_point)``, 供 `session tree` 追踪分支关系。
+        若 ``at_message`` 为 None, 分叉整份当前会话。
+        """
+        child = SessionStore(self.dir)
+        # fork 应把子会话写在同一会话目录, 而非再套一层 sessions/sessions
+        child.dir = self.dir
+        child.file = self.dir / f"{child.session_id}.jsonl"
+        parent_meta = self.read_meta(self.file) or {}
+        meta_payload: Dict[str, Any] = {
+            "kind": "fork",
+            "parent": self.session_id,
+            "branch_point": at_message,
+        }
+        if note:
+            meta_payload["note"] = note
+        if parent_meta.get("task"):
+            meta_payload["task"] = parent_meta["task"]
+        child.append("session.meta", meta_payload)
+        counts = 0
+        try:
+            with open(self.file, "r", encoding="utf-8") as f:
+                for line in f:
+                    try:
+                        rec = json.loads(line)
+                    except json.JSONDecodeError:
+                        continue
+                    # 内容事件 (user/assistant/tool...) 才计数; session.meta 不进子会话
+                    if rec.get("type") == "session.meta":
+                        continue
+                    if rec.get("type") in ("user", "assistant") and "message" in rec:
+                        counts += 1
+                        if at_message is not None and counts > at_message:
+                            break
+                    payload = {k: v for k, v in rec.items() if k not in ("ts", "type")}
+                    child.append(rec.get("type") or "event", payload)
+        except OSError:
+            pass
+        return child
+
+    def branch_info(self) -> Dict[str, Any]:
+        """返回当前会话的分叉谱系信息 (无则空 dict)。"""
+        meta = self.read_meta(self.file) or {}
+        if meta.get("kind") != "fork":
+            return {}
+        return {
+            "kind": "fork",
+            "parent": meta.get("parent"),
+            "branch_point": meta.get("branch_point"),
+            "note": meta.get("note", ""),
+        }
 
     @classmethod
     def peek_title(cls, path: Path) -> str:
